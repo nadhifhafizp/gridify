@@ -161,3 +161,25 @@ async function findAndFillSlot(supabase: any, stageId: string, roundNum: number,
     }
   }
 }
+
+export async function updateBRMatchScoreAction(
+  matchId: string,
+  results: { teamId: string; rank: number; kills: number; total: number }[],
+  tournamentId: string
+) {
+  const supabase = await createClient()
+
+  // Simpan array hasil ke kolom scores (JSONB)
+  const { error } = await supabase
+    .from('matches')
+    .update({
+      scores: { results }, // Bungkus dalam object 'results'
+      status: 'COMPLETED' // Langsung tandai selesai
+    })
+    .eq('id', matchId)
+
+  if (error) return { success: false, error: error.message }
+
+  revalidatePath(`/dashboard/tournaments/${tournamentId}/bracket`)
+  return { success: true }
+}

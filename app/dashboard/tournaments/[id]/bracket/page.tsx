@@ -1,9 +1,10 @@
 import { createClient } from '@/lib/supabase/server'
-import { Swords, Trophy, LayoutList, GitGraph, AlertCircle } from 'lucide-react'
+import { Swords, Trophy, LayoutList, GitGraph, AlertCircle, Target } from 'lucide-react'
 import Link from 'next/link'
 import GenerateBracketButton from './generate-button'
 import BracketVisualizer from '@/components/bracket/bracket-visualizer'
 import StandingsTable from '@/components/bracket/standings-table'
+import BRLeaderboard from '@/components/bracket/br-leaderboard' // Pastikan ini di-import
 
 export const dynamic = 'force-dynamic'
 
@@ -63,12 +64,13 @@ export default async function BracketPage({
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
           <h2 className="text-2xl font-bold text-white flex items-center gap-3">
-            {activeStage?.type === 'ROUND_ROBIN' ? (
-              <LayoutList className="text-blue-400" /> 
-            ) : (
-              <GitGraph className="text-orange-400" />
-            )}
-            {activeStage?.name || 'Pertandingan'}
+            {activeStage?.type === 'ROUND_ROBIN' ? <LayoutList className="text-blue-400" /> : 
+             activeStage?.type === 'LEADERBOARD' ? <Target className="text-red-400" /> :
+             <GitGraph className="text-orange-400" />}
+            
+            {activeStage?.type === 'ROUND_ROBIN' ? 'Klasemen Liga' : 
+             activeStage?.type === 'LEADERBOARD' ? 'Battle Royale Standings' :
+             'Bracket Pertandingan'}
           </h2>
           <p className="text-slate-400 text-sm mt-1">
             Format: <span className="text-indigo-400 font-medium">{activeStage?.type.replace('_', ' ')}</span>
@@ -94,12 +96,12 @@ export default async function BracketPage({
           </div>
         )}
         
-        {/* Tombol Reset (HANYA MUNCUL JIKA BRACKET SUDAH ADA) */}
+        {/* Tombol Reset (HANYA MUNCUL JIKA BRACKET SUDAH ADA & Stage Pertama) */}
         {hasBracket && activeStage?.sequence_order === 1 && (
            <GenerateBracketButton 
              tournamentId={id} 
              participantCount={participants?.length || 0} 
-             label="Reset Bracket" 
+             label="Reset Sistem" 
            />
         )}
       </div>
@@ -107,7 +109,6 @@ export default async function BracketPage({
       {/* MAIN CONTENT */}
       <div className="flex-1 animate-in fade-in duration-500">
         
-        {/* STATE 1: BELUM ADA BRACKET -> TAMPILKAN EMPTY STATE */}
         {!hasBracket ? (
           <div className="flex flex-col items-center justify-center py-20 border-2 border-dashed border-slate-800 rounded-2xl bg-slate-900/20 text-center">
             <div className="w-20 h-20 bg-slate-800/50 rounded-full flex items-center justify-center mb-6 ring-4 ring-slate-800/30">
@@ -119,17 +120,15 @@ export default async function BracketPage({
               <br/>Klik tombol di bawah untuk menyusun jadwal.
             </p>
             
-            {/* LABEL TOMBOL DISESUAIKAN: "Buat Bracket" */}
             <GenerateBracketButton 
               tournamentId={id} 
               participantCount={participants?.length || 0} 
-              label="Buat Bracket" 
+              label="Buat Jadwal" 
             />
           </div>
         ) : (
-          /* STATE 2: SUDAH ADA BRACKET -> TAMPILKAN VISUALIZER */
           <>
-            {/* VIEW 1: TABEL KLASEMEN (Liga / Grup) */}
+            {/* VIEW 1: LIGA (ROUND ROBIN) */}
             {activeStage?.type === 'ROUND_ROBIN' && (
               <StandingsTable 
                 matches={matches || []} 
@@ -138,7 +137,7 @@ export default async function BracketPage({
               />
             )}
 
-            {/* VIEW 2: BAGAN POHON (Knockout / Playoff) */}
+            {/* VIEW 2: BRACKET (SINGLE/DOUBLE ELIM) */}
             {(activeStage?.type === 'SINGLE_ELIMINATION' || activeStage?.type === 'DOUBLE_ELIMINATION') && (
               <div className="bg-slate-900/30 border border-white/5 rounded-2xl p-6 overflow-hidden relative min-h-[400px]">
                  <div className="absolute top-4 right-4 z-10">
@@ -150,13 +149,13 @@ export default async function BracketPage({
               </div>
             )}
 
-            {/* VIEW 3: LEADERBOARD (Battle Royale) */}
+            {/* VIEW 3: BATTLE ROYALE (LEADERBOARD) - SUDAH DIPERBAIKI */}
             {activeStage?.type === 'LEADERBOARD' && (
-               <div className="p-12 text-center border border-slate-800 rounded-2xl bg-slate-900/50">
-                 <Trophy size={48} className="mx-auto text-yellow-500 mb-4" />
-                 <h3 className="text-xl font-bold text-white">Leaderboard Battle Royale</h3>
-                 <p className="text-slate-400">Fitur ini akan segera hadir!</p>
-               </div>
+               <BRLeaderboard 
+                 matches={matches || []}
+                 participants={participants || []}
+                 tournamentId={id}
+               />
             )}
           </>
         )}
@@ -166,7 +165,6 @@ export default async function BracketPage({
   )
 }
 
-// Komponen Empty State Fallback (Jika stage corrupt)
 function EmptyState({ tournamentId, participantCount }: { tournamentId: string, participantCount: number }) {
   return (
     <div className="flex flex-col items-center justify-center py-20 border-2 border-dashed border-slate-800 rounded-2xl bg-slate-900/20 text-center animate-in fade-in zoom-in duration-300">

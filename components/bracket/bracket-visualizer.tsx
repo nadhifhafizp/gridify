@@ -1,16 +1,20 @@
 import MatchCard from './match-card'
 import { Trophy } from 'lucide-react'
 
-export default function BracketVisualizer({ matches }: { matches: any[] }) {
+export default function BracketVisualizer({ 
+  matches, 
+  isReadOnly = false // Default false
+}: { 
+  matches: any[], 
+  isReadOnly?: boolean 
+}) {
   
-  // 1. Pisahkan Bracket berdasarkan Round
   const upperBracket = matches.filter(m => m.round_number > 0 && m.round_number < 999)
   const lowerBracket = matches.filter(m => m.round_number < 0)
   const grandFinal = matches.filter(m => m.round_number === 999)
 
   const hasLowerBracket = lowerBracket.length > 0
 
-  // Helper: Grouping match per round
   const groupRounds = (matchList: any[]) => {
     const rounds = matchList.reduce((acc: any, match) => {
       const round = Math.abs(match.round_number)
@@ -24,16 +28,11 @@ export default function BracketVisualizer({ matches }: { matches: any[] }) {
   const ubRounds = groupRounds(upperBracket)
   const lbRounds = groupRounds(lowerBracket)
 
-  // 2. LOGIKA MENCARI JUARA (WINNER)
   let finalMatch = null
-  
-  if (grandFinal.length > 0) {
-    finalMatch = grandFinal[0]
-  } else if (ubRounds.length > 0) {
+  if (grandFinal.length > 0) finalMatch = grandFinal[0]
+  else if (ubRounds.length > 0) {
     const lastRound = ubRounds[ubRounds.length - 1]
-    if (lastRound && lastRound.length === 1) {
-      finalMatch = lastRound[0]
-    }
+    if (lastRound && lastRound.length === 1) finalMatch = lastRound[0]
   }
 
   const championId = finalMatch?.winner_id
@@ -44,14 +43,13 @@ export default function BracketVisualizer({ matches }: { matches: any[] }) {
   return (
     <div className="w-full overflow-x-auto pb-12 pt-4 custom-scrollbar flex flex-col gap-12">
       
-      {/* === MAIN / UPPER BRACKET === */}
+      {/* UPPER BRACKET */}
       <div>
         {hasLowerBracket && (
           <h3 className="text-indigo-400 font-bold mb-4 sticky left-0">Upper Bracket</h3>
         )}
         
         <div className="flex gap-12 min-w-max px-4 items-center">
-          {/* Render Rounds */}
           {ubRounds.map((roundMatches: any[], idx) => (
             <div key={idx} className="flex flex-col justify-around gap-8 self-stretch">
               <div className="text-center mb-2">
@@ -59,52 +57,47 @@ export default function BracketVisualizer({ matches }: { matches: any[] }) {
               </div>
               <div className="flex flex-col justify-center gap-8 h-full">
                 {roundMatches.sort((a, b) => a.match_number - b.match_number).map(m => (
-                  <MatchCard key={m.id} match={m} />
+                  // FIX: Teruskan isReadOnly ke sini
+                  <MatchCard key={m.id} match={m} isReadOnly={isReadOnly} />
                 ))}
               </div>
             </div>
           ))}
           
-          {/* Render Grand Final */}
           {grandFinal.length > 0 && (
             <div className="flex flex-col justify-center gap-8 self-stretch">
                <div className="text-center mb-2">
                 <span className="text-xs text-yellow-500 font-mono font-bold">GRAND FINAL</span>
               </div>
-              {grandFinal.map(m => <MatchCard key={m.id} match={m} />)}
+              {grandFinal.map(m => (
+                // FIX: Teruskan isReadOnly ke sini
+                <MatchCard key={m.id} match={m} isReadOnly={isReadOnly} />
+              ))}
             </div>
           )}
 
-          {/* === VISUAL JUARA (WINNER CARD) === */}
+          {/* WINNER CARD */}
           {finalMatch?.status === 'COMPLETED' && championName && (
             <div className="flex items-center animate-in fade-in slide-in-from-left-8 duration-700">
-               {/* FIX 1: bg-gradient-to-r -> bg-linear-to-r */}
                <div className="h-0.5 w-12 bg-linear-to-r from-slate-700 to-yellow-500/50"></div>
-               
                <div className="relative p-6 rounded-2xl bg-linear-to-b from-yellow-500/20 to-amber-600/10 border border-yellow-500/50 text-center shadow-[0_0_40px_rgba(234,179,8,0.2)] ml-2">
                  <div className="absolute -top-8 left-1/2 -translate-x-1/2 bg-slate-900 p-3 rounded-full border border-yellow-500/50 shadow-lg shadow-yellow-500/20">
                    <Trophy size={32} className="text-yellow-400 drop-shadow-[0_0_10px_rgba(234,179,8,0.8)]" />
                  </div>
-                 
                  <div className="mt-4 min-w-[120px]">
-                   <span className="text-[10px] font-bold text-yellow-500 tracking-[0.2em] uppercase block mb-1">
-                     CHAMPION
-                   </span>
-                   {/* FIX 2: Hapus text-white karena konflik dengan text-transparent */}
+                   <span className="text-[10px] font-bold text-yellow-500 tracking-[0.2em] uppercase block mb-1">CHAMPION</span>
                    <h1 className="text-2xl font-black whitespace-nowrap bg-linear-to-r from-white via-yellow-200 to-white bg-clip-text text-transparent">
                      {championName}
                    </h1>
                  </div>
-
                  <div className="absolute inset-0 bg-yellow-400/5 blur-xl rounded-2xl -z-10 animate-pulse"></div>
                </div>
             </div>
           )}
-
         </div>
       </div>
 
-      {/* === LOWER BRACKET === */}
+      {/* LOWER BRACKET */}
       {hasLowerBracket && (
         <div className="border-t border-slate-800 pt-8">
           <h3 className="text-red-400 font-bold mb-4 sticky left-0">Lower Bracket</h3>
@@ -116,7 +109,8 @@ export default function BracketVisualizer({ matches }: { matches: any[] }) {
                 </div>
                 <div className="flex flex-col justify-center gap-8 h-full">
                   {roundMatches.sort((a, b) => a.match_number - b.match_number).map(m => (
-                    <MatchCard key={m.id} match={m} />
+                    // FIX: Teruskan isReadOnly ke sini
+                    <MatchCard key={m.id} match={m} isReadOnly={isReadOnly} />
                   ))}
                 </div>
               </div>
@@ -124,7 +118,6 @@ export default function BracketVisualizer({ matches }: { matches: any[] }) {
           </div>
         </div>
       )}
-
     </div>
   )
 }

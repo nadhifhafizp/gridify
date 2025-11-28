@@ -1,10 +1,11 @@
-'use client' // Tambahkan ini karena kita pakai state untuk modal
+'use client'
 
 import { useState } from 'react'
-import { Trophy, Edit2 } from 'lucide-react'
-import ScoreModal from './score-modal' // Import modal yang baru dibuat
+import { Edit2 } from 'lucide-react'
+import ScoreModal from './score-modal'
 
-export default function MatchCard({ match }: { match: any }) {
+// Tambahkan prop isReadOnly (Default false agar tidak merusak halaman admin)
+export default function MatchCard({ match, isReadOnly = false }: { match: any, isReadOnly?: boolean }) {
   const [isModalOpen, setIsModalOpen] = useState(false)
 
   const p1 = match.participant_a
@@ -12,26 +13,27 @@ export default function MatchCard({ match }: { match: any }) {
   const score = match.scores || { a: 0, b: 0 }
   const winnerId = match.winner_id
 
-  // Cek apakah match sudah siap dimainkan (kedua peserta sudah ada)
   const isReady = p1 && p2
+
+  // Logic klik: Hanya bisa jika ready DAN tidak read-only
+  const canEdit = isReady && !isReadOnly
 
   return (
     <>
       <div 
         className="w-64 shrink-0 relative group"
-        onClick={() => isReady && setIsModalOpen(true)} // Buka modal saat diklik
+        onClick={() => canEdit && setIsModalOpen(true)}
       >
-        {/* Connector Lines */}
         <div className="absolute top-1/2 -right-6 w-6 h-0.5 bg-slate-800 hidden group-last:hidden md:block"></div>
         
         <div className={`border rounded-lg overflow-hidden shadow-lg transition-all relative ${
-          isReady 
+          canEdit 
             ? 'border-slate-700 bg-slate-900/80 cursor-pointer hover:border-indigo-500/50 hover:shadow-indigo-500/10' 
-            : 'border-slate-800 bg-slate-950/50 opacity-70 cursor-not-allowed'
+            : 'border-slate-800 bg-slate-900/40 cursor-default' // Style non-aktif
         }`}>
           
-          {/* Overlay Edit Icon saat Hover (Hanya jika ready) */}
-          {isReady && (
+          {/* Overlay Edit HANYA jika canEdit */}
+          {canEdit && (
             <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity z-10">
               <div className="bg-indigo-600 text-white px-3 py-1.5 rounded-full text-xs font-bold flex items-center gap-2 transform translate-y-2 group-hover:translate-y-0 transition-transform">
                 <Edit2 size={12} /> Update Skor
@@ -39,6 +41,7 @@ export default function MatchCard({ match }: { match: any }) {
             </div>
           )}
 
+          {/* ... (BAGIAN BAWAH SAMA PERSIS, TIDAK PERLU DIUBAH) ... */}
           {/* Header Match ID */}
           <div className="bg-slate-950 px-3 py-1.5 flex justify-between items-center text-[10px] text-slate-500 uppercase font-bold tracking-wider border-b border-slate-800">
             <span>Match #{match.match_number}</span>
@@ -69,13 +72,8 @@ export default function MatchCard({ match }: { match: any }) {
         </div>
       </div>
 
-      {/* Render Modal */}
-      {isReady && (
-        <ScoreModal 
-          match={match} 
-          isOpen={isModalOpen} 
-          onClose={() => setIsModalOpen(false)} 
-        />
+      {canEdit && (
+        <ScoreModal match={match} isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} />
       )}
     </>
   )

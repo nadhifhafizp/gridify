@@ -47,9 +47,12 @@ export async function generateBracketAction(tournamentId: string) {
       await generateDoubleElimination(supabase, tournamentId, stage.id, participants)
     }
     else if (stage.type === 'ROUND_ROBIN') {
-      // Kirim format_type untuk membedakan Liga Murni vs Fase Grup UCL
       await generateGroupStage(supabase, tournamentId, stage.id, participants, tournament?.format_type)
     } 
+    // 👇 TAMBAHAN BARU: LEADERBOARD (BATTLE ROYALE)
+    else if (stage.type === 'LEADERBOARD') {
+      await generateBattleRoyale(supabase, tournamentId, stage.id)
+    }
     else {
       return { success: false, error: `Format ${stage.type} belum didukung generator.` }
     }
@@ -245,4 +248,27 @@ async function updateGroupNames(supabase: any, teams: any[], groupName: string) 
     .from('participants')
     .update({ group_name: groupName })
     .in('id', ids)
+}
+
+//Logic 4: BATTLE ROYALE (Leaderboard Style)
+async function generateBattleRoyale(supabase: any, tournamentId: string, stageId: string) {
+  // Battle Royale tidak ada pairing A vs B.
+  // Kita buat "Game Session" (Match) dimana semua peserta dianggap main.
+  // Default kita buat 5 Match awal.
+  const defaultMatchCount = 5;
+
+  for (let i = 1; i <= defaultMatchCount; i++) {
+    await supabase.from('matches').insert({
+      tournament_id: tournamentId,
+      stage_id: stageId,
+      round_number: 1, // Round 1 = Day 1 (bisa dikembangkan nanti)
+      match_number: i, // Game 1, Game 2, Game 3...
+      // Participant dikosongkan karena melibatkan BANYAK tim
+      participant_a_id: null, 
+      participant_b_id: null,
+      status: 'SCHEDULED',
+      // Scores akan menyimpan array hasil: [{teamId, rank, kills, pts}, ...]
+      scores: {} 
+    })
+  }
 }
