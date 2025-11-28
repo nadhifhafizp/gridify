@@ -19,17 +19,12 @@ export async function updateSession(request: NextRequest) {
           return request.cookies.getAll()
         },
         setAll(cookiesToSet) {
-          // Loop 1: Update cookies di Request (agar Server Component bisa baca sesi terbaru)
           cookiesToSet.forEach(({ name, value }) =>
             request.cookies.set(name, value)
           )
-
-          // Refresh Response object agar membawa cookies request terbaru
           response = NextResponse.next({
             request,
           })
-
-          // Loop 2: Update cookies di Response (agar Browser user menyimpan sesi)
           cookiesToSet.forEach(({ name, value, options }) =>
             response.cookies.set(name, value, options)
           )
@@ -39,30 +34,33 @@ export async function updateSession(request: NextRequest) {
   )
 
   // 3. Cek User (Refresh Token)
-  // PENTING: Jangan hapus bagian ini, ini jantungnya auth middleware
   const {
     data: { user },
   } = await supabase.auth.getUser()
 
-  // ----------------------------------------------------------------
-  // 4. LOGIC PROTEKSI ROUTE (SECURITY)
-  // ----------------------------------------------------------------
-  
+  // 4. LOGIC PROTEKSI & REDIRECT
   const path = request.nextUrl.pathname
+
+  // --- RULE BARU: Root URL ('/') langsung lempar ke Dashboard ---
+  if (path === '/') {
+    const url = request.nextUrl.clone()
+    url.pathname = '/dashboard'
+    return NextResponse.redirect(url)
+  }
 
   // KONDISI A: User BELUM Login, tapi maksa masuk Dashboard
   // Redirect ke Login
   if (path.startsWith('/dashboard') && !user) {
     const url = request.nextUrl.clone()
-    url.pathname = '/login' // Pastikan kamu punya page login di /login
+    url.pathname = '/login'
     return NextResponse.redirect(url)
   }
 
-  // KONDISI B (OPSIONAL TAPI BAGUS): User SUDAH Login, tapi iseng buka halaman Login
+  // KONDISI B: User SUDAH Login, tapi iseng buka halaman Login/Register
   // Redirect balik ke Dashboard
   if ((path === '/login' || path === '/register') && user) {
     const url = request.nextUrl.clone()
-    url.pathname = '/dashboard' // Redirect ke halaman utama dashboard
+    url.pathname = '/dashboard'
     return NextResponse.redirect(url)
   }
 
