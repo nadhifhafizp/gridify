@@ -1,45 +1,49 @@
-'use client'
+"use client";
 
-import { useState } from 'react'
-import { generateBracketAction } from '@/actions/bracket-actions'
-import { Shuffle } from 'lucide-react'
+import { useState } from "react";
+import { generateBracketAction } from "@/features/bracket/actions/bracket-actions";
+import { Shuffle } from "lucide-react";
 
-export default function GenerateBracketButton({ 
-  tournamentId, 
+export default function GenerateBracketButton({
+  tournamentId,
   participantCount,
-  label = "Generate Bracket Sekarang"
-}: { 
-  tournamentId: string, 
-  participantCount: number,
-  label?: string
+  label = "Generate Bracket Sekarang",
+}: {
+  tournamentId: string;
+  participantCount: number;
+  label?: string;
 }) {
-  const [loading, setLoading] = useState(false)
+  const [loading, setLoading] = useState(false);
 
   const handleGenerate = async () => {
     // Validasi Client Side biar gak buang request
     if (participantCount < 2) {
-      alert("Minimal butuh 2 peserta!")
-      return
+      alert("Minimal butuh 2 peserta!");
+      return;
     }
-    
+
     // Cek Power of Two (4, 8, 16)
-    const isPowerOfTwo = (n: number) => (n & (n - 1)) === 0
+    const isPowerOfTwo = (n: number) => (n & (n - 1)) === 0;
     if (!isPowerOfTwo(participantCount)) {
-      if(!confirm(`Jumlah peserta ${participantCount} bukan kelipatan 4/8/16. Sistem mungkin error atau butuh BYE. Lanjut paksa?`)) {
-        return
+      if (
+        !confirm(
+          `Jumlah peserta ${participantCount} bukan kelipatan 4/8/16. Sistem mungkin error atau butuh BYE. Lanjut paksa?`
+        )
+      ) {
+        return;
       }
     }
 
-    setLoading(true)
-    const result = await generateBracketAction(tournamentId)
-    setLoading(false)
+    setLoading(true);
+    const result = await generateBracketAction(tournamentId);
+    setLoading(false);
 
     if (result?.error) {
-      alert("Gagal: " + result.error)
+      alert("Gagal: " + result.error);
     } else {
-      alert("Berhasil! Bracket telah disusun.")
+      alert("Berhasil! Bracket telah disusun.");
     }
-  }
+  };
 
   return (
     <button
@@ -50,5 +54,5 @@ export default function GenerateBracketButton({
       <Shuffle size={20} className={loading ? "animate-spin" : ""} />
       {loading ? "Sedang Mengacak..." : label}
     </button>
-  )
+  );
 }
