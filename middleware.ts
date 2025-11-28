@@ -1,6 +1,4 @@
 import { NextRequest } from 'next/server'
-
-// 👇 Perhatikan titiknya. Ini artinya "masuk ke folder lib di sebelah saya"
 import { updateSession } from './lib/supabase/middleware' 
 
 export async function middleware(request: NextRequest) {
