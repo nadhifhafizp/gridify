@@ -4,17 +4,56 @@ import Link from 'next/link'
 import BracketVisualizer from '@/components/bracket/bracket-visualizer'
 import StandingsTable from '@/components/bracket/standings-table'
 import BRLeaderboard from '@/components/bracket/br-leaderboard'
+import { Metadata, ResolvingMetadata } from 'next'
 
-// Halaman publik harus selalu fresh datanya
 export const dynamic = 'force-dynamic'
 
-export default async function PublicTournamentPage({ 
-  params, 
-  searchParams 
-}: { 
-  params: Promise<{ id: string }>,
+type Props = {
+  params: Promise<{ id: string }>
   searchParams: Promise<{ stage?: string }>
-}) {
+}
+
+// Helper aman untuk ambil nama game (Handle Array/Object)
+const getGameName = (gamesData: any) => {
+  if (Array.isArray(gamesData)) {
+    return gamesData[0]?.name || 'Unknown Game'
+  }
+  return gamesData?.name || 'Unknown Game'
+}
+
+// 1. FUNGSI GENERATE METADATA
+export async function generateMetadata(
+  { params }: Props,
+  parent: ResolvingMetadata
+): Promise<Metadata> {
+  const { id } = await params
+  const supabase = await createClient()
+ 
+  const { data: tournament } = await supabase
+    .from('tournaments')
+    .select('title, description, games(name)')
+    .eq('id', id)
+    .single()
+ 
+  if (!tournament) {
+    return { title: 'Tournament Not Found' }
+  }
+
+  // FIX: Gunakan helper
+  const gameName = getGameName(tournament.games)
+
+  return {
+    title: `${tournament.title} | Gridify`,
+    description: `Ikuti klasemen dan jadwal pertandingan ${gameName} di ${tournament.title}.`,
+    openGraph: {
+      title: tournament.title,
+      description: `Cek bracket dan hasil pertandingan ${gameName} disini!`,
+    },
+  }
+}
+
+// 2. KOMPONEN UTAMA
+export default async function PublicTournamentPage({ params, searchParams }: Props) {
   const { id } = await params
   const { stage: stageIdParam } = await searchParams
   const supabase = await createClient()
@@ -27,6 +66,9 @@ export default async function PublicTournamentPage({
     .single()
 
   if (!tournament) return <div className="text-white text-center py-20">Turnamen tidak ditemukan.</div>
+
+  // FIX: Gunakan helper untuk nama game di UI
+  const gameName = getGameName(tournament.games)
 
   // 2. Ambil Stage
   const { data: stages } = await supabase
@@ -66,7 +108,7 @@ export default async function PublicTournamentPage({
             
             <div className="flex-1">
               <span className="inline-block px-3 py-1 rounded-full bg-slate-800 text-indigo-400 text-xs font-bold border border-slate-700 mb-2">
-                {tournament.games?.name}
+                {gameName}
               </span>
               <h1 className="text-3xl md:text-4xl font-black text-white mb-2">{tournament.title}</h1>
               <p className="text-slate-400 max-w-2xl">{tournament.description || 'Tidak ada deskripsi turnamen.'}</p>
@@ -119,7 +161,7 @@ export default async function PublicTournamentPage({
                 matches={matches || []} 
                 participants={participants || []} 
                 tournamentId={id} 
-                isReadOnly={true} // <--- PENTING
+                isReadOnly={true}
               />
             )}
 
@@ -131,7 +173,7 @@ export default async function PublicTournamentPage({
                        Geser Horizontal 👉
                     </span>
                  </div>
-                 <BracketVisualizer matches={matches || []} isReadOnly={true} /> {/* <--- PENTING */}
+                 <BracketVisualizer matches={matches || []} isReadOnly={true} />
               </div>
             )}
 
@@ -141,7 +183,7 @@ export default async function PublicTournamentPage({
                  matches={matches || []}
                  participants={participants || []}
                  tournamentId={id}
-                 isReadOnly={true} // <--- PENTING
+                 isReadOnly={true}
                />
             )}
           </div>
