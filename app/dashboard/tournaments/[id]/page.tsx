@@ -1,6 +1,6 @@
 import { createClient } from '@/lib/supabase/server'
 import { Trophy, Users, Swords, Gamepad2, Calendar } from 'lucide-react'
-import ShareButton from '@/components/tournament/share-button'
+import ShareButton from '@/features/tournaments/components/share-button'
 
 export default async function TournamentOverviewPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params

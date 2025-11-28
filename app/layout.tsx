@@ -1,12 +1,21 @@
 import type { Metadata } from "next";
-import { Inter } from "next/font/google"; // ✅ GANTI JADI INTER
+import { Inter } from "next/font/google";
 import "./globals.css";
+import AppProviders from "@/components/providers/app-providers";
 
-const inter = Inter({ subsets: ["latin"] }); // ✅ INISIALISASI INTER
+const inter = Inter({ subsets: ["latin"] });
 
 export const metadata: Metadata = {
-  title: "Gridify",
-  description: "Esport Tournament Manager",
+  title: "Gridify - Free Tournament Bracket Generator & Manager",
+  description:
+    "Create esports tournaments easily. Support Single Elimination, Double Elimination, Round Robin, and Battle Royale. Realtime updates & shareable brackets.",
+  keywords: [
+    "tournament bracket",
+    "esport manager",
+    "pembuat bagan turnamen",
+    "mlbb tournament",
+    "pubg leaderboard",
+  ],
 };
 
 export default function RootLayout({
@@ -16,8 +25,8 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en">
-      <body className={inter.className}> {/* ✅ PAKAI CLASS INTER */}
-        {children}
+      <body className={inter.className}>
+        <AppProviders>{children}</AppProviders>
       </body>
     </html>
   );
