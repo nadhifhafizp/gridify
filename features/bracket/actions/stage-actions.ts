@@ -1,166 +1,207 @@
-'use server'
+"use server";
 
-import { createClient } from '@/lib/supabase/server'
-import { revalidatePath } from 'next/cache'
+import { createClient } from "@/lib/supabase/server";
+import { revalidatePath } from "next/cache";
 
-type TeamStats = { id: string; points: number; gd: number; gf: number; group: string }
+// Tipe data untuk statistik tim di klasemen
+type TeamStats = {
+  id: string;
+  name: string;
+  group: string;
+  points: number;
+  gd: number;
+  gf: number;
+};
 
 export async function advanceToKnockoutAction(tournamentId: string) {
-  const supabase = await createClient()
+  const supabase = await createClient();
 
-  // 1. Ambil Stage Grup (Round Robin)
+  // 1. Ambil Stage Grup (Round Robin) saat ini
   const { data: currentStage } = await supabase
-    .from('stages')
-    .select('id, sequence_order')
-    .eq('tournament_id', tournamentId)
-    .eq('type', 'ROUND_ROBIN')
-    .single()
+    .from("stages")
+    .select("id, sequence_order")
+    .eq("tournament_id", tournamentId)
+    .eq("type", "ROUND_ROBIN")
+    .single();
 
-  if (!currentStage) return { success: false, error: 'Stage grup tidak ditemukan.' }
+  if (!currentStage)
+    return { success: false, error: "Stage grup tidak ditemukan." };
 
-  // 2. Ambil Stage Selanjutnya (Target)
+  // 2. Ambil Stage Selanjutnya (Target Knockout)
   const { data: nextStage } = await supabase
-    .from('stages')
-    .select('id, type')
-    .eq('tournament_id', tournamentId)
-    .gt('sequence_order', currentStage.sequence_order)
-    .order('sequence_order', { ascending: true })
+    .from("stages")
+    .select("id, type")
+    .eq("tournament_id", tournamentId)
+    .gt("sequence_order", currentStage.sequence_order)
+    .order("sequence_order", { ascending: true })
     .limit(1)
-    .single()
+    .single();
 
-  if (!nextStage) return { success: false, error: 'Tidak ada stage playoff.' }
+  if (!nextStage)
+    return { success: false, error: "Tidak ada stage playoff selanjutnya." };
 
-  // 3. Ambil Match Grup Selesai
+  // 3. Ambil Hasil Pertandingan Grup yang sudah selesai
   const { data: matches } = await supabase
-    .from('matches')
-    .select('*')
-    .eq('stage_id', currentStage.id)
-    .eq('status', 'COMPLETED')
+    .from("matches")
+    .select("*")
+    .eq("stage_id", currentStage.id)
+    .eq("status", "COMPLETED");
 
-  if (!matches || matches.length === 0) return { success: false, error: 'Belum ada pertandingan selesai.' }
+  if (!matches || matches.length === 0)
+    return { success: false, error: "Belum ada pertandingan yang selesai." };
 
-  // 4. HITUNG KLASEMEN
-  const standings: Record<string, TeamStats> = {}
-  
-  // Mapping Participant ke Grup
-  const { data: participants } = await supabase.from('participants').select('id, group_name').eq('tournament_id', tournamentId)
-  const pMap: Record<string, string> = {}
-  participants?.forEach(p => pMap[p.id] = p.group_name || 'League')
+  // 4. Hitung Klasemen (Standings Logic)
+  const standings: Record<string, TeamStats> = {};
 
-  const update = (id: string, group: string, pts: number, gd: number, gf: number) => {
-    if (!standings[id]) standings[id] = { id, points: 0, gd: 0, gf: 0, group }
-    standings[id].points += pts; standings[id].gd += gd; standings[id].gf += gf
-  }
+  // Mapping Peserta ke Grup untuk referensi nama & grup
+  const { data: participants } = await supabase
+    .from("participants")
+    .select("id, name, group_name")
+    .eq("tournament_id", tournamentId);
 
-  matches.forEach(m => {
-    const sA = m.scores.a; const sB = m.scores.b
-    const grp = pMap[m.participant_a_id]
-    update(m.participant_a_id, grp, sA > sB ? 3 : sA === sB ? 1 : 0, sA - sB, sA)
-    update(m.participant_b_id, grp, sB > sA ? 3 : sB === sA ? 1 : 0, sB - sA, sB)
-  })
+  const pMap: Record<string, { name: string; group: string }> = {};
+  participants?.forEach((p) => {
+    // Default group name 'League' jika null
+    pMap[p.id] = { name: p.name, group: p.group_name || "League" };
+  });
 
-  // 5. AMBIL QUALIFIERS (Top 2 Per Grup)
-  const qualifiers: Record<string, { winner: string, runnerUp: string }> = {}
-  const groups: Record<string, TeamStats[]> = {}
-  
-  Object.values(standings).forEach(s => { 
-    if(!groups[s.group]) groups[s.group] = []
-    groups[s.group].push(s) 
-  })
-
-  Object.keys(groups).forEach(gName => {
-    // Sortir: Poin > GD > GF
-    groups[gName].sort((a, b) => b.points - a.points || b.gd - a.gd || b.gf - a.gf)
-    if (groups[gName].length >= 2) {
-      qualifiers[gName] = { winner: groups[gName][0].id, runnerUp: groups[gName][1].id }
+  // Helper update stats
+  const update = (id: string, pts: number, gd: number, gf: number) => {
+    if (!standings[id]) {
+      standings[id] = {
+        id,
+        name: pMap[id]?.name || "TBD",
+        group: pMap[id]?.group || "League",
+        points: 0,
+        gd: 0,
+        gf: 0,
+      };
     }
-  })
+    standings[id].points += pts;
+    standings[id].gd += gd;
+    standings[id].gf += gf;
+  };
 
-  // Reset match lama di stage target sebelum generate baru
-  await supabase.from('matches').delete().eq('stage_id', nextStage.id)
+  // Iterasi setiap match result untuk hitung poin
+  matches.forEach((m) => {
+    const sA = m.scores?.a || 0;
+    const sB = m.scores?.b || 0;
 
-  const groupNames = Object.keys(qualifiers).sort()
-  
-  if (!groupNames.includes('A') || !groupNames.includes('B')) {
-    return { success: false, error: 'Minimal harus ada Grup A dan Grup B untuk lanjut.' }
+    // Pastikan kedua peserta ada (bukan BYE)
+    if (m.participant_a_id && m.participant_b_id) {
+      // Poin: Menang 3, Seri 1, Kalah 0
+      const ptsA = sA > sB ? 3 : sA === sB ? 1 : 0;
+      const ptsB = sB > sA ? 3 : sB === sA ? 1 : 0;
+
+      update(m.participant_a_id, ptsA, sA - sB, sA);
+      update(m.participant_b_id, ptsB, sB - sA, sB);
+    }
+  });
+
+  // 5. Tentukan Kualifikasi (Top 2 Per Grup)
+  const groups: Record<string, TeamStats[]> = {};
+
+  // Kelompokkan standings berdasarkan nama grup
+  Object.values(standings).forEach((s) => {
+    if (!groups[s.group]) groups[s.group] = [];
+    groups[s.group].push(s);
+  });
+
+  const qualifiers: { id: string; group: string; rank: number }[] = [];
+
+  // Loop setiap grup untuk mencari juara & runner up
+  Object.keys(groups).forEach((gName) => {
+    // Sortir Klasemen: Points > GD (Goal Difference) > GF (Goal For)
+    const sortedGroup = groups[gName].sort(
+      (a, b) => b.points - a.points || b.gd - a.gd || b.gf - a.gf
+    );
+
+    // Ambil Juara (Rank 1)
+    if (sortedGroup[0]) qualifiers.push({ ...sortedGroup[0], rank: 1 });
+    // Ambil Runner Up (Rank 2)
+    if (sortedGroup[1]) qualifiers.push({ ...sortedGroup[1], rank: 2 });
+  });
+
+  if (qualifiers.length < 2) {
+    return {
+      success: false,
+      error: "Tidak cukup tim yang lolos kualifikasi untuk membuat bracket.",
+    };
   }
 
-  // 6. GENERATE BRACKET DENGAN LINKING (Cross Pairing)
-  
-  // --- SKENARIO 1: SINGLE ELIMINATION (eFootball) ---
-  if (nextStage.type === 'SINGLE_ELIMINATION') {
-    // A. Buat FINAL Dulu (Round 2) untuk dapat ID-nya
-    const finalMatchId = await createKnockoutMatch(
-      supabase, tournamentId, nextStage.id, 2, 1, null, null, null
-    )
+  // 6. Generate Bracket Knockout (Stage 2)
+  // Bersihkan match lama di stage target (Clean Slate)
+  await supabase.from("matches").delete().eq("stage_id", nextStage.id);
 
-    // B. Buat SEMIFINAL (Round 1) dan link ke Final
-    // Match 1: Juara A vs Runner Up B -> Lari ke Final
-    await createKnockoutMatch(
-      supabase, tournamentId, nextStage.id, 1, 1, 
-      qualifiers['A'].winner, qualifiers['B'].runnerUp, 
-      finalMatchId // <-- LINK KE FINAL
-    )
+  try {
+    // SKENARIO 1: SINGLE ELIMINATION (Standard UCL Knockout)
+    if (nextStage.type === "SINGLE_ELIMINATION") {
+      const rank1Teams = qualifiers.filter((q) => q.rank === 1);
+      const rank2Teams = qualifiers.filter((q) => q.rank === 2);
 
-    // Match 2: Juara B vs Runner Up A -> Lari ke Final
-    await createKnockoutMatch(
-      supabase, tournamentId, nextStage.id, 1, 2, 
-      qualifiers['B'].winner, qualifiers['A'].runnerUp, 
-      finalMatchId // <-- LINK KE FINAL
-    )
-  } 
-  
-  // --- SKENARIO 2: DOUBLE ELIMINATION (MLBB/MPL) ---
-  else if (nextStage.type === 'DOUBLE_ELIMINATION') {
-    // Struktur Sederhana MPL (4 Tim Lolos):
-    // R1 Upper (2 Match) -> R2 Upper (Final Upper)
-    // R1 Lower (1 Match, kalah dari R1 Upper)
-    // R2 Lower (Final Lower: Menang R1 Lower vs Kalah R2 Upper)
-    // Grand Final (Menang Upper vs Menang Lower)
+      // Ambil jumlah match berdasarkan pasangan terkecil
+      const matchCount = Math.min(rank1Teams.length, rank2Teams.length);
 
-    // Note: Untuk Double Elim yang linking-nya kompleks, kita buat struktur dasarnya saja.
-    // Logic advance winner/loser nanti ditangani 'updateMatchScoreAction'.
-    
-    // 1. Upper Bracket (Round 1 & 2)
-    await createKnockoutMatch(supabase, tournamentId, nextStage.id, 1, 1, qualifiers['A'].winner, qualifiers['B'].runnerUp, null)
-    await createKnockoutMatch(supabase, tournamentId, nextStage.id, 1, 2, qualifiers['B'].winner, qualifiers['A'].runnerUp, null)
-    await createKnockoutMatch(supabase, tournamentId, nextStage.id, 2, 1, null, null, null)
+      // Buat Round 1 Knockout (Misal: Semifinal atau Quarter Final)
+      // Kita lakukan pairing manual di sini agar Juara Grup vs Runner Up Grup Lain
+      for (let i = 0; i < matchCount; i++) {
+        const teamA = rank1Teams[i];
 
-    // 2. Lower Bracket (Round Negatif)
-    await createKnockoutMatch(supabase, tournamentId, nextStage.id, -1, 1, null, null, null)
-    await createKnockoutMatch(supabase, tournamentId, nextStage.id, -2, 1, null, null, null)
+        // Cari lawan: Runner Up dari grup yang BERBEDA
+        // Jika tidak ada, terpaksa ambil yang index sama
+        const teamB =
+          rank2Teams.find((t) => t.group !== teamA.group) || rank2Teams[i];
 
-    // 3. Grand Final (Round 999)
-    await createKnockoutMatch(supabase, tournamentId, nextStage.id, 999, 1, null, null, null)
+        // Hapus teamB dari pool agar tidak dipilih dua kali
+        const bIndex = rank2Teams.indexOf(teamB);
+        if (bIndex > -1) rank2Teams.splice(bIndex, 1);
+
+        // Insert Match
+        await supabase.from("matches").insert({
+          tournament_id: tournamentId,
+          stage_id: nextStage.id,
+          round_number: 1, // Round 1 Stage Knockout
+          match_number: i + 1,
+          participant_a_id: teamA.id,
+          participant_b_id: teamB.id,
+          status: "SCHEDULED",
+          scores: { a: 0, b: 0 },
+        });
+      }
+
+      // Note: Untuk membuat full tree bracket sampai final, idealnya kita memanggil
+      // generator 'generateSingleElimination' dengan input 'qualifiers' sebagai peserta.
+      // Namun untuk MVP Hybrid, pairing manual 1 ronde ini sudah cukup fungsional.
+    }
+
+    // SKENARIO 2: DOUBLE ELIMINATION (Playoff MPL)
+    else if (nextStage.type === "DOUBLE_ELIMINATION") {
+      // Logic serupa, masukkan qualifiers ke Upper Bracket Round 1
+      // Implementasi disederhanakan untuk MVP: Pair Rank 1 vs Rank 2
+      for (let i = 0; i < qualifiers.length / 2; i++) {
+        const p1 = qualifiers[i * 2];
+        const p2 = qualifiers[i * 2 + 1];
+
+        if (p1 && p2) {
+          await supabase.from("matches").insert({
+            tournament_id: tournamentId,
+            stage_id: nextStage.id,
+            round_number: 1, // Upper Bracket R1
+            match_number: i + 1,
+            participant_a_id: p1.id,
+            participant_b_id: p2.id,
+            status: "SCHEDULED",
+            scores: { a: 0, b: 0 },
+          });
+        }
+      }
+      // Generate sisa struktur bracket kosong (LB & Finals) bisa ditambahkan di sini
+      // atau memanggil generator Double Elim
+    }
+  } catch (err: any) {
+    return { success: false, error: err.message };
   }
 
-  revalidatePath(`/dashboard/tournaments/${tournamentId}/bracket`)
-  return { success: true }
-}
-
-// --- HELPER CREATE MATCH (DIPERBAIKI) ---
-// Sekarang menerima parameter `nextMatchId` agar match bisa tersambung
-async function createKnockoutMatch(
-  supabase: any, 
-  tId: string, 
-  sId: string, 
-  round: number, 
-  matchNum: number, 
-  pA: string | null, 
-  pB: string | null,
-  nextMatchId: string | null // Parameter baru
-) {
-  const { data, error } = await supabase.from('matches').insert({
-    tournament_id: tId, 
-    stage_id: sId, 
-    round_number: round, 
-    match_number: matchNum,
-    participant_a_id: pA, 
-    participant_b_id: pB, 
-    next_match_id: nextMatchId, // Simpan link ke database
-    status: 'SCHEDULED'
-  }).select('id').single()
-
-  if (error) console.error('Error creating match:', error)
-  return data?.id // Return ID agar bisa dipakai oleh match sebelumnya
+  revalidatePath(`/dashboard/tournaments/${tournamentId}/bracket`);
+  return { success: true };
 }

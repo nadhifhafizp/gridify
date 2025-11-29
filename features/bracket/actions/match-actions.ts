@@ -13,11 +13,9 @@ export async function updateMatchScoreAction(
 ) {
   const supabase = await createClient();
 
-  // Validasi basic
   if (scoreA < 0 || scoreB < 0)
     return { success: false, error: "Skor tidak boleh negatif" };
 
-  // 1. Ambil data match dengan Tipe yang Benar
   const { data: matchData, error: fetchError } = await supabase
     .from("matches")
     .select("*, stages(id, type, sequence_order)")
@@ -27,10 +25,8 @@ export async function updateMatchScoreAction(
   if (fetchError || !matchData)
     return { success: false, error: "Match tidak ditemukan" };
 
-  // Casting ke tipe Match agar autocomplete jalan (Supabase join result perlu handling khusus, tapi kita simplify disini)
   const match = matchData as unknown as Match & { stages: Stage };
 
-  // 2. Tentukan Pemenang
   let winnerId: string | null = null;
   let loserId: string | null = null;
 
@@ -41,13 +37,15 @@ export async function updateMatchScoreAction(
     winnerId = match.participant_b_id;
     loserId = match.participant_a_id;
   }
-  // Jika seri (Draw), winnerId tetap null (Hanya valid untuk League)
 
-  // 3. Update Match Ini
+  // Preserve existing scores properties if needed, but for 1v1 usually simple overwrite is fine
+  // But strictly speaking, merging is safer.
+  const newScores = { ...match.scores, a: scoreA, b: scoreB };
+
   const { error: updateError } = await supabase
     .from("matches")
     .update({
-      scores: { a: scoreA, b: scoreB },
+      scores: newScores, // Gunakan merged scores
       winner_id: winnerId,
       status: "COMPLETED",
     })
@@ -55,15 +53,12 @@ export async function updateMatchScoreAction(
 
   if (updateError) return { success: false, error: updateError.message };
 
-  // =====================================
-  // 4. AUTO-ADVANCE LOGIC
-  // =====================================
+  // ADVANCE LOGIC
   const stageType = match.stages?.type;
 
   if (winnerId) {
-    // A. SINGLE ELIMINATION
-    if (stageType === "SINGLE_ELIMINATION" && match.next_match_id) {
-      await advanceToNextMatch(
+    if (match.next_match_id) {
+      await advanceParticipant(
         supabase,
         match.next_match_id,
         match.match_number,
@@ -71,27 +66,16 @@ export async function updateMatchScoreAction(
       );
     }
 
-    // B. DOUBLE ELIMINATION (Simplified MVP Logic)
-    if (stageType === "DOUBLE_ELIMINATION") {
-      const currentRound = match.round_number;
-
-      // Upper Bracket (Round > 0)
-      if (currentRound > 0 && currentRound < 999) {
-        // Pemenang -> Lanjut di Upper
-        await findAndFillSlot(
-          supabase,
-          match.stage_id,
-          currentRound + 1,
-          winnerId
-        );
-
-        // Kalah -> Turun ke Lower (TODO: Logic Lower Bracket yang presisi butuh mapping khusus)
-        // Untuk MVP Phase 1: Kita biarkan manual atau implementasi sederhana nanti
-      }
+    if (
+      stageType === "DOUBLE_ELIMINATION" &&
+      loserId &&
+      match.round_number > 0 &&
+      match.round_number < 999
+    ) {
+      await dropToLowerBracket(supabase, match, loserId);
     }
   }
 
-  // 5. Cek Tournament Finish
   await checkTournamentCompletion(
     supabase,
     tournamentId,
@@ -99,14 +83,13 @@ export async function updateMatchScoreAction(
     match.stages.sequence_order
   );
 
-  // 6. Refresh
   revalidatePath(`/dashboard/tournaments/${tournamentId}`);
   revalidatePath(`/dashboard/tournaments/${tournamentId}/bracket`);
 
   return { success: true };
 }
 
-// --- ACTION 2: Update Skor Battle Royale ---
+// --- ACTION 2: Update Skor Battle Royale (DIPERBAIKI) ---
 export async function updateBRMatchScoreAction(
   matchId: string,
   results: { teamId: string; rank: number; kills: number; total: number }[],
@@ -114,15 +97,35 @@ export async function updateBRMatchScoreAction(
 ) {
   const supabase = await createClient();
 
-  // Validasi Array
   if (!Array.isArray(results) || results.length === 0) {
     return { success: false, error: "Data hasil tidak valid" };
   }
 
+  // 1. Ambil data match lama untuk mendapatkan 'groups' yang sudah ada
+  const { data: existingMatch, error: fetchError } = await supabase
+    .from("matches")
+    .select("scores")
+    .eq("id", matchId)
+    .single();
+
+  if (fetchError || !existingMatch) {
+    return { success: false, error: "Match tidak ditemukan" };
+  }
+
+  // 2. Gabungkan data lama (groups) dengan data baru (results)
+  // Casting ke any/Match karena Supabase return type kadang loose
+  const currentScores = existingMatch.scores as Match["scores"];
+
+  const updatedScores = {
+    ...currentScores, // Pertahankan properti 'groups'
+    results: results, // Update hasil pertandingan
+  };
+
+  // 3. Simpan ke Database
   const { error } = await supabase
     .from("matches")
     .update({
-      scores: { results },
+      scores: updatedScores,
       status: "COMPLETED",
     })
     .eq("id", matchId);
@@ -135,49 +138,49 @@ export async function updateBRMatchScoreAction(
 
 // --- HELPER FUNCTIONS ---
 
-async function advanceToNextMatch(
+async function advanceParticipant(
   supabase: any,
-  nextMatchId: string,
+  targetMatchId: string,
   currentMatchNum: number,
-  winnerId: string
+  participantId: string
 ) {
-  // Ganjil masuk slot A, Genap masuk slot B (Asumsi struktur binary tree standar)
   const isOdd = currentMatchNum % 2 !== 0;
   const targetCol = isOdd ? "participant_a_id" : "participant_b_id";
   await supabase
     .from("matches")
-    .update({ [targetCol]: winnerId })
-    .eq("id", nextMatchId);
+    .update({ [targetCol]: participantId })
+    .eq("id", targetMatchId);
 }
 
-async function findAndFillSlot(
+async function dropToLowerBracket(
   supabase: any,
-  stageId: string,
-  roundNum: number,
-  teamId: string
+  currentMatch: Match,
+  loserId: string
 ) {
+  const wbRound = currentMatch.round_number;
+  const targetLBRound = -wbRound;
+
   const { data: targetMatches } = await supabase
     .from("matches")
-    .select("id, participant_a_id, participant_b_id")
-    .eq("stage_id", stageId)
-    .eq("round_number", roundNum)
+    .select("*")
+    .eq("stage_id", currentMatch.stage_id)
+    .eq("round_number", targetLBRound)
     .order("match_number", { ascending: true });
 
-  if (!targetMatches) return;
+  if (!targetMatches || targetMatches.length === 0) return;
 
-  // Cari slot kosong pertama
-  for (const target of targetMatches) {
-    if (!target.participant_a_id) {
+  for (const m of targetMatches) {
+    if (!m.participant_a_id) {
       await supabase
         .from("matches")
-        .update({ participant_a_id: teamId })
-        .eq("id", target.id);
+        .update({ participant_a_id: loserId })
+        .eq("id", m.id);
       break;
-    } else if (!target.participant_b_id) {
+    } else if (!m.participant_b_id) {
       await supabase
         .from("matches")
-        .update({ participant_b_id: teamId })
-        .eq("id", target.id);
+        .update({ participant_b_id: loserId })
+        .eq("id", m.id);
       break;
     }
   }
@@ -189,7 +192,6 @@ async function checkTournamentCompletion(
   stageId: string,
   stageOrder: number
 ) {
-  // Cek apakah ada stage lagi setelah ini?
   const { count: stagesAfter } = await supabase
     .from("stages")
     .select("*", { count: "exact", head: true })
@@ -197,7 +199,6 @@ async function checkTournamentCompletion(
     .gt("sequence_order", stageOrder);
 
   if (stagesAfter === 0) {
-    // Cek apakah semua match di stage ini sudah selesai?
     const { count: pendingMatches } = await supabase
       .from("matches")
       .select("*", { count: "exact", head: true })

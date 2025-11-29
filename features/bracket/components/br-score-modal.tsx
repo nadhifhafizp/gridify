@@ -1,10 +1,12 @@
 "use client";
 
-import { useState, useEffect } from "react";
-import { X, Save, Trophy } from "lucide-react";
+import { useState, useEffect, useMemo } from "react";
+import { X, Save, Trophy, Loader2 } from "lucide-react";
 import { updateBRMatchScoreAction } from "@/features/bracket/actions/match-actions";
+import { Match } from "@/types/database";
+import { toast } from "sonner";
 
-// Standard Point System
+// Standard Point System (PUBG Mobile Style)
 const PLACEMENT_POINTS: Record<number, number> = {
   1: 10,
   2: 6,
@@ -30,7 +32,7 @@ export default function BRScoreModal({
   tournamentId,
   onClose,
 }: {
-  match: any;
+  match: Match;
   participants: any[];
   tournamentId: string;
   onClose: () => void;
@@ -38,16 +40,28 @@ export default function BRScoreModal({
   const [loading, setLoading] = useState(false);
   const [rows, setRows] = useState<ResultRow[]>([]);
 
-  // Inisialisasi Data
+  // Filter peserta berdasarkan grup yang bermain di match ini (Logic Penting!)
+  const playingGroups = match.scores?.groups; // e.g., ["A", "B"]
+
+  // Gunakan useMemo untuk mencegah array baru dibuat setiap render
+  const eligibleParticipants = useMemo(() => {
+    return playingGroups
+      ? participants.filter(
+          (p) =>
+            !p.group_name ||
+            playingGroups.includes(p.group_name) ||
+            playingGroups.includes("All")
+        )
+      : participants;
+  }, [participants, playingGroups]);
+
   useEffect(() => {
-    // Cek apakah sudah ada data skor sebelumnya di database?
     const existingResults = match.scores?.results as ResultRow[];
 
     if (existingResults && existingResults.length > 0) {
-      // Jika ada, gabungkan dengan peserta (untuk cover kasus penambahan tim baru)
-      const mapped: ResultRow[] = participants.map((p) => {
+      // Merge existing result with eligible participants
+      const mapped: ResultRow[] = eligibleParticipants.map((p) => {
         const found = existingResults.find((r) => r.teamId === p.id);
-        // PERBAIKAN: Definisikan tipe object fallback secara eksplisit
         const emptyRow: ResultRow = {
           teamId: p.id,
           rank: "",
@@ -56,13 +70,13 @@ export default function BRScoreModal({
         };
         return found || emptyRow;
       });
-      // Sortir berdasarkan rank
+      // Sort by rank
       setRows(
         mapped.sort((a, b) => (Number(a.rank) || 99) - (Number(b.rank) || 99))
       );
     } else {
-      // Jika belum ada, buat form kosong
-      const initialRows: ResultRow[] = participants.map((p) => ({
+      // Init empty
+      const initialRows: ResultRow[] = eligibleParticipants.map((p) => ({
         teamId: p.id,
         rank: "",
         kills: "",
@@ -70,9 +84,8 @@ export default function BRScoreModal({
       }));
       setRows(initialRows);
     }
-  }, [match, participants]);
+  }, [match.id, match.scores, eligibleParticipants]);
 
-  // Hitung ulang total saat Rank/Kill berubah
   const handleChange = (
     idx: number,
     field: "rank" | "kills",
@@ -81,28 +94,20 @@ export default function BRScoreModal({
     const newRows = [...rows];
     const val = parseInt(value) || 0;
 
-    // Update value (jika string kosong tetap string kosong, jika angka jadi number)
-    // TypeScript butuh casting manual di sini agar tidak error saat assign
-    if (field === "rank") {
-      newRows[idx].rank = value === "" ? "" : val;
-    } else {
-      newRows[idx].kills = value === "" ? "" : val;
-    }
+    if (field === "rank") newRows[idx].rank = value === "" ? "" : val;
+    else newRows[idx].kills = value === "" ? "" : val;
 
-    // Hitung Total Otomatis
+    // Recalculate Total
     const rank = Number(newRows[idx].rank);
     const kills = Number(newRows[idx].kills);
     const placementPts = PLACEMENT_POINTS[rank] || 0;
 
     newRows[idx].total = placementPts + kills * KILL_POINT;
-
     setRows(newRows);
   };
 
   const handleSave = async () => {
     setLoading(true);
-
-    // Bersihkan data sebelum kirim (convert ke number murni untuk DB)
     const cleanResults = rows.map((r) => ({
       teamId: r.teamId,
       rank: Number(r.rank) || 0,
@@ -110,17 +115,23 @@ export default function BRScoreModal({
       total: r.total,
     }));
 
-    const result = await updateBRMatchScoreAction(
-      match.id,
-      cleanResults,
-      tournamentId
-    );
-    setLoading(false);
+    try {
+      const result = await updateBRMatchScoreAction(
+        match.id,
+        cleanResults,
+        tournamentId
+      );
 
-    if (result.success) {
-      onClose();
-    } else {
-      alert("Gagal update skor: " + result.error);
+      if (result.success) {
+        toast.success("Hasil pertandingan disimpan!");
+        onClose();
+      } else {
+        toast.error("Gagal menyimpan", { description: result.error });
+      }
+    } catch (e) {
+      toast.error("Terjadi kesalahan.");
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -134,16 +145,15 @@ export default function BRScoreModal({
         <div className="px-6 py-4 border-b border-slate-800 flex justify-between items-center bg-slate-950 shrink-0 rounded-t-2xl">
           <div>
             <h3 className="text-lg font-bold text-white">
-              Input Hasil Match {match.match_number}
+              Input Hasil Game {match.match_number}
             </h3>
-            <p className="text-xs text-slate-400">
-              Masukkan Rank & Total Kill. Poin dihitung otomatis.
-            </p>
+            {playingGroups && (
+              <span className="text-xs text-indigo-400 font-bold bg-indigo-500/10 px-2 py-0.5 rounded border border-indigo-500/20">
+                Group: {playingGroups.join(" & ")}
+              </span>
+            )}
           </div>
-          <button
-            onClick={onClose}
-            className="text-slate-400 hover:text-white transition-colors"
-          >
+          <button onClick={onClose} className="text-slate-400 hover:text-white">
             <X size={20} />
           </button>
         </div>
@@ -173,7 +183,7 @@ export default function BRScoreModal({
                         onChange={(e) =>
                           handleChange(idx, "rank", e.target.value)
                         }
-                        className="w-full bg-slate-950 border border-slate-700 rounded-lg px-2 py-1.5 text-center text-white focus:border-yellow-500 focus:ring-1 focus:ring-yellow-500 outline-none"
+                        className="w-full bg-slate-950 border border-slate-700 rounded-lg px-2 py-1.5 text-center text-white focus:border-yellow-500 focus:ring-1 outline-none"
                         placeholder="-"
                       />
                       {Number(row.rank) === 1 && (
@@ -185,17 +195,15 @@ export default function BRScoreModal({
                     </div>
                   </td>
                   <td className="px-2 py-3">
-                    <div className="relative">
-                      <input
-                        type="number"
-                        value={row.kills}
-                        onChange={(e) =>
-                          handleChange(idx, "kills", e.target.value)
-                        }
-                        className="w-full bg-slate-950 border border-slate-700 rounded-lg px-2 py-1.5 text-center text-white focus:border-red-500 focus:ring-1 focus:ring-red-500 outline-none"
-                        placeholder="0"
-                      />
-                    </div>
+                    <input
+                      type="number"
+                      value={row.kills}
+                      onChange={(e) =>
+                        handleChange(idx, "kills", e.target.value)
+                      }
+                      className="w-full bg-slate-950 border border-slate-700 rounded-lg px-2 py-1.5 text-center text-white focus:border-red-500 focus:ring-1 outline-none"
+                      placeholder="0"
+                    />
                   </td>
                   <td className="px-4 py-3 text-center font-bold text-indigo-400 text-lg">
                     {row.total}
