@@ -6,12 +6,14 @@ export default async function TournamentOverviewPage({ params }: { params: Promi
   const { id } = await params
   const supabase = await createClient()
 
+  // 1. Ambil detail turnamen
   const { data: tournament } = await supabase
     .from('tournaments')
     .select('*, games(*)')
     .eq('id', id)
     .single()
 
+  // 2. Ambil jumlah peserta
   const { count: participantCount } = await supabase
     .from('participants')
     .select('*', { count: 'exact', head: true })
@@ -22,20 +24,22 @@ export default async function TournamentOverviewPage({ params }: { params: Promi
   return (
     <div className="space-y-6 animate-in fade-in duration-500">
       
-      {/* --- BANNER HEADER (FIXED LAYOUT) --- */}
+      {/* --- BANNER HEADER (FIXED BUG OVERFLOW) --- */}
+      {/* Hapus 'overflow-hidden' dari container utama, pindahkan ke layer background */}
       <div className="relative rounded-2xl p-8 border border-white/5 bg-slate-900">
         
-        {/* Layer 1: Background Decoration (Absolute & Overflow Hidden) */}
+        {/* LAYER 1: Background & Dekorasi (Absolute & Overflow Hidden disini) */}
         <div className="absolute inset-0 rounded-2xl overflow-hidden pointer-events-none">
            <div className="absolute inset-0 bg-linear-to-br from-slate-900 to-slate-800"></div>
            <div className="absolute top-0 right-0 p-32 bg-indigo-600/10 rounded-full blur-3xl -translate-y-1/2 translate-x-1/4"></div>
         </div>
         
-        {/* Layer 2: Content (Relative & Z-10 agar muncul di atas background & Popover bisa keluar) */}
+        {/* LAYER 2: Konten (Relative & Z-Index tinggi agar muncul di atas background) */}
+        {/* Tidak ada overflow-hidden disini, jadi popup bisa keluar */}
         <div className="relative z-10">
           <div className="flex flex-col md:flex-row md:items-start justify-between gap-4">
             
-            {/* KIRI */}
+            {/* KIRI: Info Judul */}
             <div>
               <span className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-indigo-500/20 text-indigo-300 text-xs font-bold border border-indigo-500/30 mb-3">
                 <Gamepad2 size={14} />
@@ -49,7 +53,7 @@ export default async function TournamentOverviewPage({ params }: { params: Promi
               </p>
             </div>
 
-            {/* KANAN */}
+            {/* KANAN: Status & Tombol Share */}
             <div className="flex flex-row md:flex-col items-end gap-3 shrink-0">
               <span className={`inline-block px-4 py-2 rounded-lg text-sm font-bold border text-center ${
                 tournament.status === 'DRAFT' ? 'bg-yellow-500/10 text-yellow-400 border-yellow-500/20' : 
@@ -60,7 +64,7 @@ export default async function TournamentOverviewPage({ params }: { params: Promi
                  tournament.status === 'DRAFT' ? 'DRAFT' : 'ON GOING'}
               </span>
 
-              {/* Tombol Share */}
+              {/* Tombol Share (Sekarang popup-nya aman) */}
               <ShareButton tournamentId={id} />
             </div>
 
@@ -68,7 +72,7 @@ export default async function TournamentOverviewPage({ params }: { params: Promi
         </div>
       </div>
 
-      {/* --- STATISTIK GRID (Tetap Sama) --- */}
+      {/* --- STATISTIK GRID --- */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
         <div className="p-6 rounded-2xl bg-slate-900/50 border border-white/5 hover:border-indigo-500/30 transition-colors group">
           <div className="flex items-center gap-4">
