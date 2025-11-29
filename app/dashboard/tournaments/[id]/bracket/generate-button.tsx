@@ -1,8 +1,9 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useTransition } from "react";
 import { generateBracketAction } from "@/features/bracket/actions/bracket-actions";
-import { Shuffle } from "lucide-react";
+import { Shuffle, Loader2 } from "lucide-react";
+import { toast } from "sonner";
 
 export default function GenerateBracketButton({
   tournamentId,
@@ -13,46 +14,55 @@ export default function GenerateBracketButton({
   participantCount: number;
   label?: string;
 }) {
-  const [loading, setLoading] = useState(false);
+  const [isPending, startTransition] = useTransition();
 
   const handleGenerate = async () => {
-    // Validasi Client Side biar gak buang request
+    // Validasi minimal peserta
     if (participantCount < 2) {
-      alert("Minimal butuh 2 peserta!");
+      toast.error("Minimal butuh 2 peserta untuk membuat bracket.");
       return;
     }
 
-    // Cek Power of Two (4, 8, 16)
-    const isPowerOfTwo = (n: number) => (n & (n - 1)) === 0;
-    if (!isPowerOfTwo(participantCount)) {
-      if (
-        !confirm(
-          `Jumlah peserta ${participantCount} bukan kelipatan 4/8/16. Sistem mungkin error atau butuh BYE. Lanjut paksa?`
-        )
-      ) {
-        return;
+    // Kita tidak perlu lagi validasi Power of Two (4, 8, 16)
+    // karena backend generator sekarang sudah otomatis handle BYE / Round Robin.
+
+    if (
+      !confirm(
+        "Apakah Anda yakin ingin membuat/mereset bracket? Data match lama akan dihapus."
+      )
+    ) {
+      return;
+    }
+
+    startTransition(async () => {
+      try {
+        const result = await generateBracketAction(tournamentId);
+
+        if (result?.error) {
+          toast.error("Gagal membuat bracket", { description: result.error });
+        } else {
+          toast.success("Berhasil!", {
+            description: "Bracket pertandingan telah disusun.",
+          });
+        }
+      } catch (err) {
+        toast.error("Terjadi kesalahan sistem.");
       }
-    }
-
-    setLoading(true);
-    const result = await generateBracketAction(tournamentId);
-    setLoading(false);
-
-    if (result?.error) {
-      alert("Gagal: " + result.error);
-    } else {
-      alert("Berhasil! Bracket telah disusun.");
-    }
+    });
   };
 
   return (
     <button
       onClick={handleGenerate}
-      disabled={loading}
-      className="inline-flex items-center gap-2 px-6 py-3 rounded-xl bg-linear-to-r from-orange-600 to-red-600 hover:from-orange-500 hover:to-red-500 text-white font-bold shadow-lg shadow-orange-500/20 transition-all hover:scale-105 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
+      disabled={isPending}
+      className="inline-flex items-center gap-2 px-6 py-3 rounded-xl bg-linear-to-r from-orange-600 to-red-600 hover:from-orange-500 hover:to-red-500 text-white font-bold shadow-lg shadow-orange-500/20 transition-all hover:scale-105 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100"
     >
-      <Shuffle size={20} className={loading ? "animate-spin" : ""} />
-      {loading ? "Sedang Mengacak..." : label}
+      {isPending ? (
+        <Loader2 size={20} className="animate-spin" />
+      ) : (
+        <Shuffle size={20} />
+      )}
+      {isPending ? "Sedang Mengacak..." : label}
     </button>
   );
 }

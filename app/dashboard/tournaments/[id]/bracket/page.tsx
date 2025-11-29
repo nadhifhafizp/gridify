@@ -12,6 +12,7 @@ import GenerateBracketButton from "./generate-button";
 import BracketVisualizer from "@/features/bracket/components/bracket-visualizer";
 import StandingsTable from "@/features/bracket/components/standings-table";
 import BRLeaderboard from "@/features/bracket/components/br-leaderboard";
+import BattleRoyaleView from "@/features/bracket/components/br-view";
 
 export const dynamic = "force-dynamic";
 
@@ -176,12 +177,13 @@ export default async function BracketPage({
               </div>
             )}
 
-            {/* VIEW 3: BATTLE ROYALE (LEADERBOARD) - SUDAH DIPERBAIKI */}
+            {/* VIEW 3: BATTLE ROYALE */}
             {activeStage?.type === "LEADERBOARD" && (
-              <BRLeaderboard
+              <BattleRoyaleView
                 matches={matches || []}
                 participants={participants || []}
                 tournamentId={id}
+                isReadOnly={false} // True untuk public page
               />
             )}
           </>

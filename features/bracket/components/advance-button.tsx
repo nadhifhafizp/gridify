@@ -2,8 +2,9 @@
 
 import { useState } from "react";
 import { advanceToKnockoutAction } from "@/features/bracket/actions/stage-actions";
-import { ArrowRightCircle } from "lucide-react";
+import { ArrowRightCircle, Loader2 } from "lucide-react";
 import { useRouter } from "next/navigation";
+import { toast } from "sonner";
 
 export default function AdvanceButton({
   tournamentId,
@@ -22,15 +23,21 @@ export default function AdvanceButton({
       return;
 
     setLoading(true);
-    const result = await advanceToKnockoutAction(tournamentId);
-    setLoading(false);
+    try {
+      const result = await advanceToKnockoutAction(tournamentId);
 
-    if (result.success) {
-      alert("Berhasil! Babak Knockout telah dibuat.");
-      // Pindah tab ke Playoffs (Stage selanjutnya) - Opsional, refresh dulu
-      router.refresh();
-    } else {
-      alert("Gagal: " + result.error);
+      if (result.success) {
+        toast.success("Berhasil!", {
+          description: "Babak Knockout telah dibuat.",
+        });
+        router.refresh();
+      } else {
+        toast.error("Gagal lanjut stage", { description: result.error });
+      }
+    } catch (e) {
+      toast.error("Terjadi kesalahan sistem.");
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -38,10 +45,12 @@ export default function AdvanceButton({
     <button
       onClick={handleAdvance}
       disabled={loading}
-      className="w-full py-4 mt-6 rounded-xl bg-linear-to-r from-green-600 to-emerald-600 hover:from-green-500 hover:to-emerald-500 text-white font-bold shadow-lg shadow-green-500/20 flex items-center justify-center gap-2 transition-all transform hover:scale-[1.01]"
+      className="w-full py-4 mt-6 rounded-xl bg-linear-to-r from-green-600 to-emerald-600 hover:from-green-500 hover:to-emerald-500 text-white font-bold shadow-lg shadow-green-500/20 flex items-center justify-center gap-2 transition-all transform hover:scale-[1.01] disabled:opacity-50 disabled:cursor-not-allowed"
     >
       {loading ? (
-        "Memproses..."
+        <>
+          <Loader2 size={20} className="animate-spin" /> Memproses...
+        </>
       ) : (
         <>
           Lanjut ke Babak Knockout <ArrowRightCircle />

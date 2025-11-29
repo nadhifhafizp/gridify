@@ -105,25 +105,6 @@ export default function BRLeaderboard({
           </tbody>
         </table>
       </div>
-
-      <div className="space-y-4">
-        <h3 className="text-lg font-bold text-white flex items-center gap-2">
-          <Target size={20} className="text-orange-400" /> Hasil Pertandingan
-        </h3>
-
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {matches.map((match) => (
-            // FIX: Teruskan isReadOnly ke komponen
-            <BRMatchInput
-              key={match.id}
-              match={match}
-              participants={participants}
-              tournamentId={tournamentId}
-              isReadOnly={isReadOnly}
-            />
-          ))}
-        </div>
-      </div>
     </div>
   );
 }

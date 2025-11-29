@@ -1,11 +1,18 @@
 import MatchCard from "./match-card";
 import { Trophy } from "lucide-react";
+import { Match, Participant } from "@/types/database";
+
+// Tipe gabungan yang dibutuhkan komponen MatchCard
+type MatchWithParticipants = Match & {
+  participant_a: Participant | null;
+  participant_b: Participant | null;
+};
 
 export default function BracketVisualizer({
   matches,
-  isReadOnly = false, // Default false
+  isReadOnly = false,
 }: {
-  matches: any[];
+  matches: any[]; // Data dari Supabase seringkali raw, jadi any/unknown lalu cast di map
   isReadOnly?: boolean;
 }) {
   const upperBracket = matches.filter(
@@ -33,6 +40,7 @@ export default function BracketVisualizer({
 
   let finalMatch = null;
   if (grandFinal.length > 0) finalMatch = grandFinal[0];
+  // Logic fallback untuk final bracket biasa
   else if (ubRounds.length > 0) {
     const lastRound = ubRounds[ubRounds.length - 1];
     if (lastRound && lastRound.length === 1) finalMatch = lastRound[0];
@@ -68,9 +76,8 @@ export default function BracketVisualizer({
               </div>
               <div className="flex flex-col justify-center gap-8 h-full">
                 {roundMatches
-                  .sort((a, b) => a.match_number - b.match_number)
-                  .map((m) => (
-                    // FIX: Teruskan isReadOnly ke sini
+                  .sort((a: any, b: any) => a.match_number - b.match_number)
+                  .map((m: MatchWithParticipants) => (
                     <MatchCard key={m.id} match={m} isReadOnly={isReadOnly} />
                   ))}
               </div>
@@ -84,8 +91,7 @@ export default function BracketVisualizer({
                   GRAND FINAL
                 </span>
               </div>
-              {grandFinal.map((m) => (
-                // FIX: Teruskan isReadOnly ke sini
+              {grandFinal.map((m: MatchWithParticipants) => (
                 <MatchCard key={m.id} match={m} isReadOnly={isReadOnly} />
               ))}
             </div>
@@ -136,9 +142,8 @@ export default function BracketVisualizer({
                 </div>
                 <div className="flex flex-col justify-center gap-8 h-full">
                   {roundMatches
-                    .sort((a, b) => a.match_number - b.match_number)
-                    .map((m) => (
-                      // FIX: Teruskan isReadOnly ke sini
+                    .sort((a: any, b: any) => a.match_number - b.match_number)
+                    .map((m: MatchWithParticipants) => (
                       <MatchCard key={m.id} match={m} isReadOnly={isReadOnly} />
                     ))}
                 </div>

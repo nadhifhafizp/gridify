@@ -6,7 +6,6 @@ export type Json =
   | { [key: string]: Json | undefined }
   | Json[];
 
-// Tipe Data Tabel Database (Sesuai Skema Supabase Anda)
 export interface Tournament {
   id: string;
   created_at: string;
@@ -21,7 +20,7 @@ export interface Tournament {
     | "HYBRID_UCL"
     | "BATTLE_ROYALE";
   status: "DRAFT" | "ONGOING" | "COMPLETED";
-  settings: Json; // Menyimpan config seperti { bestOf: "3", homeAway: false }
+  settings: Json;
 }
 
 export interface Participant {
@@ -31,7 +30,7 @@ export interface Participant {
   name: string;
   contact_info: string | null;
   is_verified: boolean;
-  group_name?: string | null; // Untuk fase grup/liga
+  group_name?: string | null;
 }
 
 export interface Stage {
@@ -55,16 +54,21 @@ export interface Match {
   winner_id: string | null;
   next_match_id: string | null;
   status: "SCHEDULED" | "ONGOING" | "COMPLETED";
+  // --- UPDATE BAGIAN INI ---
   scores: {
     a?: number;
     b?: number;
+    // Tambahan untuk Battle Royale
+    groups?: string[]; // Array grup, misal ["A", "B"]
+    map?: string;
     results?: Array<{
       teamId: string;
       rank: number;
       kills: number;
       total: number;
     }>;
-  } | null; // JSONB
+  } | null;
+  // -------------------------
 }
 
 export interface Game {
