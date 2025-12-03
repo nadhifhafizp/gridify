@@ -18,7 +18,7 @@ export default function ForgotPasswordPage() {
 
     // Kirim email reset password
     const { error } = await supabase.auth.resetPasswordForEmail(email, {
-      redirectTo: `${window.location.origin}/auth/callback?next=/dashboard/settings`, // Redirect user ke halaman settings untuk ubah password baru
+      redirectTo: `${window.location.origin}/auth/callback?next=/update-password`, // Redirect user ke halaman settings untuk ubah password baru
     })
 
     setLoading(false)
