@@ -1,121 +1,97 @@
 'use client'
 
 import { useState } from 'react'
-import { updateEmailAction, updatePasswordAction } from '../actions/profile-actions'
-import { Lock, Mail, AlertTriangle, Loader2, KeyRound, ShieldCheck } from 'lucide-react'
+import { createClient } from '@/lib/supabase/client' // Kita pakai Client SDK langsung untuk kirim email
+import { Lock, Mail, Loader2, ShieldCheck, Send } from 'lucide-react'
 import { toast } from 'sonner'
 
 export default function SecurityForm({ user }: { user: any }) {
-  const [loadingEmail, setLoadingEmail] = useState(false)
-  const [loadingPass, setLoadingPass] = useState(false)
-  
-  const [newEmail, setNewEmail] = useState(user.email || '')
-  const [pass, setPass] = useState('')
-  const [confirmPass, setConfirmPass] = useState('') 
+  const [loading, setLoading] = useState(false)
+  const supabase = createClient()
 
-  const handleUpdateEmail = async () => {
-    if(newEmail === user.email) return
-    if(!window.confirm('Email konfirmasi akan dikirim ke email lama DAN baru. Lanjutkan?')) return
+  const handleSendResetLink = async () => {
+    setLoading(true)
 
-    setLoadingEmail(true)
-    const res = await updateEmailAction(newEmail)
-    setLoadingEmail(false)
+    // Mengirim email reset password ke email user yang sedang login
+    // Redirect diarahkan ke halaman /update-password setelah user klik link di email
+    const { error } = await supabase.auth.resetPasswordForEmail(user.email, {
+      redirectTo: `${window.location.origin}/auth/callback?next=/update-password`,
+    })
 
-    if(res.success) toast.success('Link verifikasi terkirim ke kedua email.')
-    else toast.error(res.error)
-  }
+    setLoading(false)
 
-  const handleUpdatePass = async () => {
-    setLoadingPass(true)
-    const res = await updatePasswordAction(pass, confirmPass)
-    setLoadingPass(false)
-
-    if(res.success) {
-      toast.success('Password berhasil diubah!')
-      setPass(''); setConfirmPass('');
+    if (error) {
+      toast.error('Gagal mengirim permintaan', { description: error.message })
     } else {
-      toast.error(res.error)
+      toast.success('Link Terkirim!', { 
+        description: `Silakan cek inbox email ${user.email} untuk mereset password.` 
+      })
     }
   }
 
   return (
     <div className="bg-[#1a1b26] rounded-2xl border border-white/5 shadow-sm overflow-hidden h-fit">
       
-      {/* Header (Updated opacity syntax) */}
+      {/* Header */}
       <div className="px-6 py-4 border-b border-white/5 flex items-center gap-3 bg-white/2">
         <div className="p-2 bg-red-500/10 rounded-lg text-red-400">
           <ShieldCheck size={20} />
         </div>
         <div>
           <h3 className="font-bold text-white text-lg">Keamanan</h3>
-          <p className="text-xs text-slate-400">Email & Kata Sandi.</p>
+          <p className="text-xs text-slate-400">Pengaturan Password & Email.</p>
         </div>
       </div>
 
       <div className="p-6 space-y-8">
         
-        {/* --- BAGIAN EMAIL --- */}
+        {/* --- INFO EMAIL (READ ONLY) --- */}
         <div className="space-y-3">
           <label className="text-xs font-bold text-slate-500 uppercase tracking-wider flex items-center gap-2">
-            <Mail size={12} /> Ganti Email
+            <Mail size={12} /> Email Terdaftar
           </label>
           
-          <div className="flex gap-2">
-            <input 
-              value={newEmail}
-              onChange={(e) => setNewEmail(e.target.value)}
-              className="flex-1 min-w-0 bg-[#0f1016] border border-slate-800 rounded-xl px-4 py-2.5 text-white text-sm focus:border-red-500 outline-none transition-all"
-              placeholder="Email baru..."
-            />
-            <button 
-              onClick={handleUpdateEmail}
-              disabled={loadingEmail || newEmail === user.email}
-              className="shrink-0 px-4 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-white text-xs font-bold border border-slate-700 transition-all disabled:opacity-50"
-            >
-              {loadingEmail ? <Loader2 className="animate-spin" size={16} /> : 'Update'}
-            </button>
+          <div className="flex items-center justify-between bg-[#0f1016] border border-slate-800 rounded-xl px-4 py-3">
+            <span className="text-slate-300 text-sm font-medium">{user.email}</span>
+            <span className="text-[10px] bg-green-500/10 text-green-400 px-2 py-0.5 rounded border border-green-500/20 uppercase tracking-wide">
+              Verified
+            </span>
           </div>
-
-          <div className="p-3 rounded-lg bg-yellow-500/5 border border-yellow-500/10 flex gap-3 items-start">
-            <AlertTriangle size={16} className="text-yellow-500 shrink-0 mt-0.5" />
-            <p className="text-xs text-yellow-200/70 leading-relaxed">
-              Mengganti email memerlukan verifikasi ulang demi keamanan akun Anda.
-            </p>
-          </div>
+          <p className="text-[10px] text-slate-500 leading-relaxed">
+            Untuk alasan keamanan, email tidak dapat diubah secara langsung. Hubungi admin jika sangat mendesak.
+          </p>
         </div>
 
         <div className="h-px w-full bg-white/5"></div>
 
-        {/* --- BAGIAN PASSWORD --- */}
+        {/* --- RESET PASSWORD BY EMAIL --- */}
         <div className="space-y-4">
           <label className="text-xs font-bold text-slate-500 uppercase tracking-wider flex items-center gap-2">
-            <KeyRound size={12} /> Ganti Password
+            <Lock size={12} /> Ganti Password
           </label>
           
-          <div className="space-y-3">
-            <input 
-              type="password" 
-              placeholder="Password Baru"
-              value={pass}
-              onChange={(e) => setPass(e.target.value)}
-              className="w-full bg-[#0f1016] border border-slate-800 rounded-xl px-4 py-3 text-white text-sm focus:border-red-500 outline-none transition-all"
-            />
-            <input 
-              type="password" 
-              placeholder="Konfirmasi Password"
-              value={confirmPass} 
-              onChange={(e) => setConfirmPass(e.target.value)} 
-              className="w-full bg-[#0f1016] border border-slate-800 rounded-xl px-4 py-3 text-white text-sm focus:border-red-500 outline-none transition-all"
-            />
-          </div>
+          <div className="bg-blue-500/5 border border-blue-500/10 rounded-xl p-4">
+            <p className="text-sm text-blue-200/80 mb-4 leading-relaxed">
+              Ingin mengubah kata sandi? Kami akan mengirimkan <strong>Link Verifikasi</strong> ke email Anda untuk melakukan reset password dengan aman.
+            </p>
 
-          <button 
-            onClick={handleUpdatePass}
-            disabled={loadingPass || !pass}
-            className="w-full py-3 rounded-xl bg-red-600 hover:bg-red-500 text-white text-sm font-bold shadow-lg shadow-red-900/20 transition-all disabled:opacity-50"
-          >
-            {loadingPass ? 'Menyimpan...' : 'Set Password Baru'}
-          </button>
+            <button 
+              onClick={handleSendResetLink}
+              disabled={loading}
+              className="w-full flex items-center justify-center gap-2 py-3 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-sm font-bold shadow-lg shadow-blue-900/20 transition-all disabled:opacity-50 disabled:cursor-not-allowed group"
+            >
+              {loading ? (
+                <>
+                  <Loader2 className="animate-spin" size={16} /> Mengirim...
+                </>
+              ) : (
+                <>
+                  <Send size={16} className="group-hover:translate-x-1 transition-transform" /> 
+                  Kirim Link Reset ke Email
+                </>
+              )}
+            </button>
+          </div>
         </div>
 
       </div>
