@@ -3,7 +3,7 @@
 import { useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import Link from 'next/link'
-import { User, Phone, Lock, Mail, AtSign, Loader2, AlertCircle, CheckCircle2 } from 'lucide-react'
+import { User, Phone, Lock, Mail, AtSign, Loader2, AlertCircle, CheckCircle2, Eye, EyeOff } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 
 export default function RegisterPage() {
@@ -13,8 +13,11 @@ export default function RegisterPage() {
   const [loading, setLoading] = useState(false)
   const [errorMsg, setErrorMsg] = useState('')
   const [successMsg, setSuccessMsg] = useState('')
+  
+  // State toggle mata
+  const [showPassword, setShowPassword] = useState(false)
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false)
 
-  // State Form Lengkap
   const [formData, setFormData] = useState({
     email: '',
     username: '',
@@ -34,13 +37,11 @@ export default function RegisterPage() {
     setErrorMsg('')
     setSuccessMsg('')
 
-    // 1. Validasi Password Match
     if (formData.password !== formData.confirmPassword) {
       setErrorMsg('Password dan Konfirmasi Password tidak cocok.')
       return
     }
 
-    // 2. Validasi Panjang Password
     if (formData.password.length < 6) {
       setErrorMsg('Password minimal 6 karakter.')
       return
@@ -48,7 +49,6 @@ export default function RegisterPage() {
 
     setLoading(true)
     
-    // 3. Register ke Supabase dengan Metadata Tambahan
     const { data, error } = await supabase.auth.signUp({
       email: formData.email,
       password: formData.password,
@@ -57,7 +57,7 @@ export default function RegisterPage() {
           username: formData.username,
           first_name: formData.firstName,
           last_name: formData.lastName,
-          full_name: `${formData.firstName} ${formData.lastName}`, // Helper untuk display name
+          full_name: `${formData.firstName} ${formData.lastName}`,
           phone: formData.phone,
         }
       }
@@ -67,13 +67,10 @@ export default function RegisterPage() {
       setErrorMsg(error.message)
       setLoading(false)
     } else {
-      // Cek apakah auto-confirm aktif atau butuh verifikasi email
       if (data.user?.identities?.length === 0) {
         setErrorMsg('Email ini sudah terdaftar.')
       } else {
-        setSuccessMsg('Registrasi Berhasil! Silakan cek email Anda untuk verifikasi, atau login jika akun langsung aktif.')
-        // Optional: Redirect setelah beberapa detik
-        // setTimeout(() => router.push('/login'), 3000)
+        setSuccessMsg('Registrasi Berhasil! Silakan cek email Anda untuk verifikasi.')
       }
       setLoading(false)
     }
@@ -82,7 +79,6 @@ export default function RegisterPage() {
   return (
     <div className="flex min-h-screen items-center justify-center bg-slate-950 bg-[radial-gradient(circle_at_bottom,var(--tw-gradient-stops))] from-purple-900/40 via-slate-950 to-slate-950 text-white p-4">
       
-      {/* Background Decorations */}
       <div className="absolute top-0 left-0 w-full h-full overflow-hidden -z-10 pointer-events-none">
         <div className="absolute top-[20%] right-[10%] w-72 h-72 bg-pink-600/20 rounded-full blur-3xl opacity-20"></div>
         <div className="absolute bottom-[10%] left-[10%] w-80 h-80 bg-violet-600/20 rounded-full blur-3xl opacity-20"></div>
@@ -110,8 +106,8 @@ export default function RegisterPage() {
         
         <form onSubmit={handleSignUp} className="space-y-5">
           
-          {/* Row 1: Nama Depan & Belakang */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+          {/* ... (Input Nama, Username, Email sama seperti sebelumnya) ... */}
+           <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
             <div className="space-y-1">
               <label className="text-xs font-medium text-purple-300 uppercase tracking-wider ml-1">Nama Depan</label>
               <div className="relative">
@@ -141,7 +137,6 @@ export default function RegisterPage() {
             </div>
           </div>
 
-          {/* Row 2: Username & Phone */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
             <div className="space-y-1">
               <label className="text-xs font-medium text-purple-300 uppercase tracking-wider ml-1">Username</label>
@@ -175,7 +170,6 @@ export default function RegisterPage() {
             </div>
           </div>
 
-          {/* Email */}
           <div className="space-y-1">
             <label className="text-xs font-medium text-purple-300 uppercase tracking-wider ml-1">Email</label>
             <div className="relative">
@@ -192,36 +186,54 @@ export default function RegisterPage() {
             </div>
           </div>
           
-          {/* Password & Confirm */}
+          {/* Row 3: Password & Confirm (DENGAN ICON MATA) */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+            
+            {/* Password */}
             <div className="space-y-1">
               <label className="text-xs font-medium text-purple-300 uppercase tracking-wider ml-1">Password</label>
               <div className="relative">
                 <Lock className="absolute left-3 top-3 text-slate-500" size={18} />
                 <input
                   name="password"
-                  type="password"
+                  type={showPassword ? "text" : "password"}
                   value={formData.password}
                   onChange={handleChange}
-                  className="w-full pl-10 pr-4 py-3 bg-slate-900/50 border border-slate-700 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent outline-none transition-all text-slate-200 placeholder-slate-600"
+                  className="w-full pl-10 pr-10 py-3 bg-slate-900/50 border border-slate-700 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent outline-none transition-all text-slate-200 placeholder-slate-600"
                   placeholder="••••••••"
                   required
                 />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword(!showPassword)}
+                  className="absolute right-3 top-3 text-slate-500 hover:text-slate-300 focus:outline-none"
+                >
+                  {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                </button>
               </div>
             </div>
+
+            {/* Konfirmasi */}
             <div className="space-y-1">
               <label className="text-xs font-medium text-purple-300 uppercase tracking-wider ml-1">Konfirmasi Password</label>
               <div className="relative">
                 <Lock className="absolute left-3 top-3 text-slate-500" size={18} />
                 <input
                   name="confirmPassword"
-                  type="password"
+                  type={showConfirmPassword ? "text" : "password"}
                   value={formData.confirmPassword}
                   onChange={handleChange}
-                  className="w-full pl-10 pr-4 py-3 bg-slate-900/50 border border-slate-700 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent outline-none transition-all text-slate-200 placeholder-slate-600"
+                  className="w-full pl-10 pr-10 py-3 bg-slate-900/50 border border-slate-700 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent outline-none transition-all text-slate-200 placeholder-slate-600"
                   placeholder="••••••••"
                   required
                 />
+                <button
+                  type="button"
+                  onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                  className="absolute right-3 top-3 text-slate-500 hover:text-slate-300 focus:outline-none"
+                >
+                  {showConfirmPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                </button>
               </div>
             </div>
           </div>

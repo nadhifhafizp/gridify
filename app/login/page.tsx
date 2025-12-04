@@ -4,12 +4,13 @@ import { useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
-import { Loader2, LogIn } from 'lucide-react'
+import { Loader2, LogIn, Eye, EyeOff } from 'lucide-react' // Tambah Import Eye
 import { toast } from 'sonner'
 
 export default function LoginPage() {
-  const [identifier, setIdentifier] = useState('') // Bisa Email atau Username
+  const [identifier, setIdentifier] = useState('')
   const [password, setPassword] = useState('')
+  const [showPassword, setShowPassword] = useState(false) // State baru
   const [loading, setLoading] = useState(false)
   const router = useRouter()
   const supabase = createClient()
@@ -19,16 +20,13 @@ export default function LoginPage() {
     setLoading(true)
 
     let emailToLogin = identifier.trim()
-
-    // 1. Cek apakah input adalah Email atau Username?
     const isEmail = emailToLogin.includes('@')
 
     if (!isEmail) {
-      // Jika Username, cari email aslinya di tabel profiles
       const { data: profile, error: profileError } = await supabase
         .from('profiles')
         .select('email')
-        .eq('username', emailToLogin) // Pastikan input case-sensitive sesuai DB atau buat ilike
+        .eq('username', emailToLogin)
         .single()
 
       if (profileError || !profile) {
@@ -36,11 +34,9 @@ export default function LoginPage() {
         setLoading(false)
         return
       }
-
       emailToLogin = profile.email
     }
 
-    // 2. Lakukan Login Standar Supabase dengan Email
     const { error } = await supabase.auth.signInWithPassword({
       email: emailToLogin,
       password,
@@ -90,14 +86,25 @@ export default function LoginPage() {
                 Lupa Password?
               </Link>
             </div>
-            <input
-              type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              className="w-full px-4 py-3 bg-slate-900/50 border border-slate-700 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none transition-all text-slate-200 placeholder-slate-600"
-              placeholder="••••••••"
-              required
-            />
+            
+            {/* UPDATE BAGIAN INPUT PASSWORD */}
+            <div className="relative">
+              <input
+                type={showPassword ? "text" : "password"} // Toggle Type
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                className="w-full px-4 py-3 bg-slate-900/50 border border-slate-700 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none transition-all text-slate-200 placeholder-slate-600 pr-10"
+                placeholder="••••••••"
+                required
+              />
+              <button
+                type="button"
+                onClick={() => setShowPassword(!showPassword)}
+                className="absolute right-3 top-3 text-slate-500 hover:text-slate-300 focus:outline-none"
+              >
+                {showPassword ? <EyeOff size={20} /> : <Eye size={20} />}
+              </button>
+            </div>
           </div>
 
           <button 
