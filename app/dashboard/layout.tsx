@@ -3,7 +3,7 @@
 import { useState } from 'react'
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
-import { LayoutDashboard, Trophy, Settings, LogOut, Plus, Menu, X } from 'lucide-react'
+import { LayoutDashboard, Trophy, Settings, LogOut, Plus, Menu, X, User } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 
 export default function DashboardLayout({
@@ -25,7 +25,7 @@ export default function DashboardLayout({
   const menuItems = [
     { name: 'Overview', icon: LayoutDashboard, href: '/dashboard' },
     { name: 'My Tournaments', icon: Trophy, href: '/dashboard/tournaments' },
-    { name: 'Settings', icon: Settings, href: '/dashboard/settings' },
+    { name: 'Profile', icon: User, href: '/dashboard/profile' },
   ]
 
   return (
