@@ -7,13 +7,14 @@ export async function generateSingleElimination({
   stageId,
   participants,
 }: BracketGeneratorParams) {
+  // 1. Hitung Ukuran Bracket (Power of 2)
   const totalParticipants = participants.length;
   const bracketSize = getNextPowerOfTwo(totalParticipants);
   const totalRounds = Math.log2(bracketSize);
 
   const matchesPayload: MatchPayload[] = [];
 
-  // 1. Generate Placeholder Matches
+  // 2. Generate Placeholder Matches (Semua Round)
   for (let round = 1; round <= totalRounds; round++) {
     const matchCount = bracketSize / Math.pow(2, round);
     for (let i = 1; i <= matchCount; i++) {
@@ -25,12 +26,13 @@ export async function generateSingleElimination({
         status: "SCHEDULED",
         participant_a_id: null,
         participant_b_id: null,
-        scores: { a: 0, b: 0 },
+        // FIX: Gunakan empty object {} karena tipe MatchPayload scores wajib object
+        scores: {}, 
       });
     }
   }
 
-  // 2. Insert DB
+  // 3. Insert ke Database
   const { data: createdMatches, error } = await supabase
     .from("matches")
     .insert(matchesPayload)
@@ -38,7 +40,7 @@ export async function generateSingleElimination({
 
   if (error) throw new Error(error.message);
 
-  // 3. Mapping & Updates
+  // 4. Mapping ID
   const idMap: Record<string, string> = {};
   createdMatches.forEach((m: any) => {
     idMap[`${m.round_number}-${m.match_number}`] = m.id;
@@ -46,45 +48,76 @@ export async function generateSingleElimination({
 
   const updates = [];
 
-  // Linking
+  // 5. Linking & Filling Round 1
   for (const m of createdMatches) {
+    let nextMatchId = null;
+    let isOddMatch = m.match_number % 2 !== 0;
+
+    // Logic Linking
     if (m.round_number < totalRounds) {
       const nextRound = m.round_number + 1;
       const nextMatchNum = Math.ceil(m.match_number / 2);
-      const parentId = idMap[`${nextRound}-${nextMatchNum}`];
+      nextMatchId = idMap[`${nextRound}-${nextMatchNum}`];
 
       updates.push(
         supabase
           .from("matches")
-          .update({ next_match_id: parentId })
+          .update({ next_match_id: nextMatchId })
           .eq("id", m.id)
       );
     }
+
+    // Logic Filling Round 1
+    if (m.round_number === 1) {
+      const index = m.match_number - 1;
+      const pA = participants[index * 2];
+      const pB = participants[index * 2 + 1];
+
+      const isBye = pA && !pB; 
+
+      if (isBye) {
+        // --- BYE Logic ---
+        updates.push(
+          supabase
+            .from("matches")
+            .update({
+              participant_a_id: pA.id,
+              participant_b_id: null,
+              status: "COMPLETED",
+              winner_id: pA.id,
+              // FIX: Hapus properti 'note' agar sesuai tipe MatchPayload
+              scores: { a: 1, b: 0 }, 
+            })
+            .eq("id", m.id)
+        );
+
+        // Auto Advance ke Ronde 2
+        if (nextMatchId) {
+          const targetColumn = isOddMatch ? "participant_a_id" : "participant_b_id";
+          updates.push(
+            supabase
+              .from("matches")
+              .update({ [targetColumn]: pA.id })
+              .eq("id", nextMatchId)
+          );
+        }
+
+      } else {
+        // --- Normal Logic ---
+        updates.push(
+          supabase
+            .from("matches")
+            .update({
+              participant_a_id: pA?.id || null,
+              participant_b_id: pB?.id || null,
+              status: "SCHEDULED",
+              scores: { a: 0, b: 0 },
+            })
+            .eq("id", m.id)
+        );
+      }
+    }
   }
-
-  // Filling Round 1 (with BYE handling)
-  const round1Matches = createdMatches
-    .filter((m: any) => m.round_number === 1)
-    .sort((a: any, b: any) => a.match_number - b.match_number);
-
-  round1Matches.forEach((m: any, index: number) => {
-    const pA = participants[index * 2];
-    const pB = participants[index * 2 + 1];
-    const isBye = pA && !pB;
-
-    updates.push(
-      supabase
-        .from("matches")
-        .update({
-          participant_a_id: pA?.id || null,
-          participant_b_id: pB?.id || null,
-          status: isBye ? "COMPLETED" : "SCHEDULED",
-          winner_id: isBye ? pA.id : null,
-          scores: isBye ? { a: 1, b: 0, note: "BYE" } : { a: 0, b: 0 },
-        })
-        .eq("id", m.id)
-    );
-  });
 
   await Promise.all(updates);
 }

@@ -1,61 +1,69 @@
-"use server";
+'use server'
 
-import { createClient } from "@/lib/supabase/server";
-import { revalidatePath } from "next/cache";
-import { z } from "zod";
+import { createClient } from "@/lib/supabase/server"
+import { revalidatePath } from "next/cache"
 
-const AddParticipantSchema = z.object({
-  tournamentId: z.string().uuid(),
-  name: z
-    .string()
-    .min(1, "Nama tim wajib diisi")
-    .max(50, "Nama tim terlalu panjang"),
-  contact: z.string().optional(),
-});
+// Action: Tambah Peserta
+export async function addParticipant(formData: FormData) {
+  const supabase = await createClient()
+  
+  const name = formData.get("name")?.toString()
+  const tournamentId = formData.get("tournamentId")?.toString()
+  const contactInfo = formData.get("contactInfo")?.toString()
 
-export async function addParticipantAction(formData: FormData) {
-  const supabase = await createClient();
-
-  // 1. Parsing Zod
-  const validatedFields = AddParticipantSchema.safeParse({
-    tournamentId: formData.get("tournamentId"),
-    name: formData.get("name"),
-    contact: formData.get("contact"),
-  });
-
-  if (!validatedFields.success) {
-    return { success: false, error: validatedFields.error.issues[0].message };
+  if (!name || !tournamentId) {
+    return { success: false, message: "Nama dan ID Turnamen wajib diisi" }
   }
 
-  const { tournamentId, name, contact } = validatedFields.data;
+  const { error } = await supabase
+    .from('participants')
+    .insert({
+      name,
+      tournament_id: tournamentId,
+      contact_info: contactInfo,
+      is_verified: true
+    })
 
-  // 2. Insert DB
-  const { error } = await supabase.from("participants").insert({
-    tournament_id: tournamentId,
-    name: name,
-    contact_info: contact || null,
-    is_verified: true,
-  });
+  if (error) return { success: false, message: error.message }
 
-  if (error) return { success: false, error: error.message };
-
-  revalidatePath(`/dashboard/tournaments/${tournamentId}/participants`);
-  return { success: true };
+  revalidatePath(`/dashboard/tournaments/${tournamentId}/participants`)
+  return { success: true, message: "Peserta berhasil ditambahkan" }
 }
 
-export async function deleteParticipantAction(
-  participantId: string,
-  tournamentId: string
-) {
-  const supabase = await createClient();
+// Action: Hapus Peserta
+export async function deleteParticipant(id: string) {
+  const supabase = await createClient()
+
+  // Cek Auth (Opsional: Strict check owner turnamen bisa ditambahkan di sini)
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return { success: false, message: "Unauthorized" }
 
   const { error } = await supabase
-    .from("participants")
+    .from('participants')
     .delete()
-    .eq("id", participantId);
+    .eq('id', id)
 
-  if (error) return { success: false, error: error.message };
+  if (error) {
+    return { success: false, message: "Gagal menghapus: " + error.message }
+  }
 
-  revalidatePath(`/dashboard/tournaments/${tournamentId}/participants`);
-  return { success: true };
+  // Revalidate semua halaman terkait turnamen agar update
+  revalidatePath('/dashboard/tournaments', 'layout')
+  
+  return { success: true, message: "Peserta berhasil dihapus" }
+}
+
+// Action: Edit Peserta (Opsional, jika ingin fitur edit nama)
+export async function updateParticipant(id: string, name: string) {
+  const supabase = await createClient()
+  
+  const { error } = await supabase
+    .from('participants')
+    .update({ name })
+    .eq('id', id)
+
+  if (error) return { success: false, message: error.message }
+
+  revalidatePath('/dashboard/tournaments', 'layout')
+  return { success: true, message: "Data peserta diperbarui" }
 }
