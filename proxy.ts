@@ -1,7 +1,8 @@
 import { NextRequest } from 'next/server'
 import { updateSession } from './lib/supabase/middleware' 
 
-export async function middleware(request: NextRequest) {
+// UBAH NAMA FUNGSI: dari 'middleware' menjadi 'proxy'
+export async function proxy(request: NextRequest) {
   return await updateSession(request)
 }
 
