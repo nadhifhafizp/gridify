@@ -10,9 +10,15 @@ interface DeleteButtonProps {
   id: string
   className?: string
   isIconOnly?: boolean
+  redirectTo?: string // Tambahkan definisi prop ini
 }
 
-export function DeleteTournamentButton({ id, className = "", isIconOnly = true }: DeleteButtonProps) {
+export function DeleteTournamentButton({ 
+  id, 
+  className = "", 
+  isIconOnly = true, 
+  redirectTo 
+}: DeleteButtonProps) {
   const router = useRouter()
   const [isDeleting, setIsDeleting] = useState(false)
 
@@ -20,19 +26,28 @@ export function DeleteTournamentButton({ id, className = "", isIconOnly = true }
     e.preventDefault()
     e.stopPropagation()
 
-    if (!window.confirm("Yakin hapus turnamen ini permanen?")) return
+    if (!window.confirm("Yakin hapus turnamen ini permanen? Data tidak bisa kembali.")) return
 
     setIsDeleting(true)
+    
     try {
       const result = await deleteTournament(id)
+
       if (result.success) {
         toast.success(result.message)
-        router.push('/dashboard/tournaments')
+        
+        // Logic Redirect Fleksibel
+        if (redirectTo) {
+          router.push(redirectTo)
+        } else {
+          // Jika tidak ada redirect, refresh halaman saja (cocok untuk list view)
+          router.refresh()
+        }
       } else {
         toast.error(result.message)
         setIsDeleting(false)
       }
-    } catch {
+    } catch (error) {
       toast.error("Terjadi kesalahan sistem")
       setIsDeleting(false)
     }
@@ -43,7 +58,6 @@ export function DeleteTournamentButton({ id, className = "", isIconOnly = true }
       onClick={handleDelete}
       disabled={isDeleting}
       className={`transition-all rounded-lg font-medium flex items-center gap-2 ${className} ${
-        // Default styling jika className kosong
         !className ? "text-slate-500 hover:text-red-500 hover:bg-red-500/10 p-2" : ""
       }`}
       title="Hapus Turnamen"
