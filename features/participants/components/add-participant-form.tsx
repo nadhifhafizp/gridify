@@ -1,83 +1,75 @@
-"use client";
+'use client'
 
-import { useRef, useState } from "react";
-import { addParticipantAction } from "@/features/participants/actions/participant-actions";
-import { Plus, User, Phone } from "lucide-react";
+import { useRef, useState } from "react"
+// PERBAIKAN: Ganti nama import
+import { addParticipant } from "@/features/participants/actions/participant-actions"
+import { Plus, User, Phone, Loader2 } from "lucide-react"
+import { toast } from "sonner"
 
-export default function AddParticipantForm({
-  tournamentId,
-}: {
-  tournamentId: string;
-}) {
-  const formRef = useRef<HTMLFormElement>(null);
-  const [loading, setLoading] = useState(false);
+export default function AddParticipantForm({ tournamentId }: { tournamentId: string }) {
+  const formRef = useRef<HTMLFormElement>(null)
+  const [isPending, setIsPending] = useState(false)
 
-  const handleSubmit = async (formData: FormData) => {
-    setLoading(true);
-    const result = await addParticipantAction(formData);
-    setLoading(false);
+  const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault()
+    setIsPending(true)
+    
+    const formData = new FormData(e.currentTarget)
+    // Pastikan tournamentId terkirim
+    formData.append("tournamentId", tournamentId) 
 
-    if (result?.error) {
-      alert("Gagal: " + result.error);
-    } else {
-      // Reset form kalau sukses
-      formRef.current?.reset();
+    try {
+      // PERBAIKAN: Panggil fungsi yang benar
+      const result = await addParticipant(formData)
+      
+      if (result.success) {
+        toast.success(result.message)
+        formRef.current?.reset()
+      } else {
+        toast.error(result.message)
+      }
+    } catch (error) {
+      toast.error("Terjadi kesalahan sistem")
+    } finally {
+      setIsPending(false)
     }
-  };
+  }
 
   return (
-    <div className="p-6 rounded-2xl bg-slate-900/50 border border-white/10 backdrop-blur-sm mb-8">
-      <h3 className="text-lg font-semibold text-white mb-4 flex items-center gap-2">
-        <Plus className="text-indigo-400" size={20} />
-        Tambah Peserta Baru
-      </h3>
+    <form ref={formRef} onSubmit={handleSubmit} className="p-4 rounded-xl bg-slate-900/50 border border-white/5 space-y-4">
+      <div className="space-y-2">
+        <label className="text-xs font-bold text-slate-400 uppercase">Nama Peserta</label>
+        <div className="relative">
+          <input 
+            name="name"
+            required
+            placeholder="Nama Team / Player"
+            className="w-full bg-slate-800/50 border border-white/10 rounded-lg pl-10 pr-4 py-2.5 text-sm text-white focus:ring-2 focus:ring-indigo-500 outline-none"
+          />
+          <User className="absolute left-3 top-2.5 w-4 h-4 text-slate-500" />
+        </div>
+      </div>
 
-      <form
-        ref={formRef}
-        action={handleSubmit}
-        className="flex flex-col md:flex-row gap-4 items-end"
+      <div className="space-y-2">
+        <label className="text-xs font-bold text-slate-400 uppercase">Kontak (Opsional)</label>
+        <div className="relative">
+          <input 
+            name="contactInfo"
+            placeholder="Email / WhatsApp / ID Game"
+            className="w-full bg-slate-800/50 border border-white/10 rounded-lg pl-10 pr-4 py-2.5 text-sm text-white focus:ring-2 focus:ring-indigo-500 outline-none"
+          />
+          <Phone className="absolute left-3 top-2.5 w-4 h-4 text-slate-500" />
+        </div>
+      </div>
+
+      <button 
+        type="submit" 
+        disabled={isPending}
+        className="w-full flex items-center justify-center gap-2 bg-indigo-600 hover:bg-indigo-500 text-white py-2.5 rounded-lg font-medium text-sm transition-all disabled:opacity-50"
       >
-        <input type="hidden" name="tournamentId" value={tournamentId} />
-
-        <div className="w-full md:flex-1 space-y-2">
-          <label className="text-xs font-medium text-slate-400 uppercase tracking-wider">
-            Nama Tim / Pemain
-          </label>
-          <div className="relative">
-            <User className="absolute left-3 top-3 text-slate-500" size={18} />
-            <input
-              name="name"
-              type="text"
-              placeholder="Contoh: RRQ Hoshi"
-              required
-              className="w-full pl-10 pr-4 py-2.5 bg-slate-800 border border-slate-700 rounded-xl text-white focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none transition-all placeholder-slate-600"
-            />
-          </div>
-        </div>
-
-        <div className="w-full md:w-1/3 space-y-2">
-          <label className="text-xs font-medium text-slate-400 uppercase tracking-wider">
-            Info Kontak (Opsional)
-          </label>
-          <div className="relative">
-            <Phone className="absolute left-3 top-3 text-slate-500" size={18} />
-            <input
-              name="contact"
-              type="text"
-              placeholder="WhatsApp / Email"
-              className="w-full pl-10 pr-4 py-2.5 bg-slate-800 border border-slate-700 rounded-xl text-white focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none transition-all placeholder-slate-600"
-            />
-          </div>
-        </div>
-
-        <button
-          type="submit"
-          disabled={loading}
-          className="w-full md:w-auto px-6 py-2.5 rounded-xl bg-linear-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 text-white font-bold shadow-lg shadow-indigo-500/20 transition-all transform hover:scale-105 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed h-[46px]"
-        >
-          {loading ? "Menyimpan..." : "Tambah"}
-        </button>
-      </form>
-    </div>
-  );
+        {isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />}
+        <span>Tambah Peserta</span>
+      </button>
+    </form>
+  )
 }
