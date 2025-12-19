@@ -1,9 +1,9 @@
 'use client'
 
 import { useState } from "react"
-import { useRouter } from "next/navigation" // Import useRouter
+import { useRouter } from "next/navigation"
 import { Trash2, Loader2 } from "lucide-react"
-import { toast } from "sonner" // Gunakan Sonner agar seragam
+import { toast } from "sonner"
 import { deleteTournament } from "@/features/tournaments/actions/delete-actions"
 
 interface DeleteButtonProps {
@@ -20,25 +20,19 @@ export function DeleteTournamentButton({ id, className = "", isIconOnly = true }
     e.preventDefault()
     e.stopPropagation()
 
-    // Konfirmasi Native Browser
-    const confirmed = window.confirm("Apakah anda yakin ingin menghapus turnamen ini? Data yang dihapus tidak bisa dikembalikan.")
-    if (!confirmed) return
+    if (!window.confirm("Yakin hapus turnamen ini permanen?")) return
 
     setIsDeleting(true)
-    
     try {
-      // Panggil Server Action
       const result = await deleteTournament(id)
-
       if (result.success) {
         toast.success(result.message)
-        // Redirect Manual di Client
         router.push('/dashboard/tournaments')
       } else {
-        toast.error(result.message || "Gagal menghapus turnamen")
+        toast.error(result.message)
         setIsDeleting(false)
       }
-    } catch (error) {
+    } catch {
       toast.error("Terjadi kesalahan sistem")
       setIsDeleting(false)
     }
@@ -48,9 +42,10 @@ export function DeleteTournamentButton({ id, className = "", isIconOnly = true }
     <button
       onClick={handleDelete}
       disabled={isDeleting}
-      className={`z-50 text-slate-500 hover:text-red-500 hover:bg-red-500/10 transition-all rounded-lg border border-transparent hover:border-red-500/20 ${
-        isIconOnly ? "p-2" : "px-4 py-2 flex items-center gap-2"
-      } ${className}`}
+      className={`transition-all rounded-lg font-medium flex items-center gap-2 ${className} ${
+        // Default styling jika className kosong
+        !className ? "text-slate-500 hover:text-red-500 hover:bg-red-500/10 p-2" : ""
+      }`}
       title="Hapus Turnamen"
     >
       {isDeleting ? (
@@ -58,7 +53,7 @@ export function DeleteTournamentButton({ id, className = "", isIconOnly = true }
       ) : (
         <>
           <Trash2 size={18} />
-          {!isIconOnly && <span className="font-medium text-sm">Hapus Turnamen</span>}
+          {!isIconOnly && <span>Hapus Turnamen</span>}
         </>
       )}
     </button>
