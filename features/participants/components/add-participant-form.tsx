@@ -1,7 +1,7 @@
 'use client'
 
 import { useRef, useState } from "react"
-// PERBAIKAN: Ganti nama import
+// PERBAIKAN: Gunakan 'addParticipant' (bukan addParticipantAction)
 import { addParticipant } from "@/features/participants/actions/participant-actions"
 import { Plus, User, Phone, Loader2 } from "lucide-react"
 import { toast } from "sonner"
@@ -15,11 +15,10 @@ export default function AddParticipantForm({ tournamentId }: { tournamentId: str
     setIsPending(true)
     
     const formData = new FormData(e.currentTarget)
-    // Pastikan tournamentId terkirim
     formData.append("tournamentId", tournamentId) 
 
     try {
-      // PERBAIKAN: Panggil fungsi yang benar
+      // Panggil fungsi dengan nama yang benar
       const result = await addParticipant(formData)
       
       if (result.success) {
