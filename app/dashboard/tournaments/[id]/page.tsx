@@ -1,7 +1,6 @@
 import { createClient } from '@/lib/supabase/server'
 import { Trophy, Users, Swords, Gamepad2, Calendar } from 'lucide-react'
 import ShareButton from '@/features/tournaments/components/share-button'
-import { DeleteTournamentButton } from '@/features/tournaments/components/delete-tournament-button'
 
 export default async function TournamentOverviewPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params
@@ -25,16 +24,18 @@ export default async function TournamentOverviewPage({ params }: { params: Promi
   return (
     <div className="space-y-6 animate-in fade-in duration-500">
       
-      {/* --- BANNER HEADER --- */}
+      {/* --- BANNER HEADER (FIXED BUG OVERFLOW) --- */}
+      {/* Hapus 'overflow-hidden' dari container utama, pindahkan ke layer background */}
       <div className="relative rounded-2xl p-8 border border-white/5 bg-slate-900">
         
-        {/* LAYER 1: Background */}
+        {/* LAYER 1: Background & Dekorasi (Absolute & Overflow Hidden disini) */}
         <div className="absolute inset-0 rounded-2xl overflow-hidden pointer-events-none">
            <div className="absolute inset-0 bg-linear-to-br from-slate-900 to-slate-800"></div>
            <div className="absolute top-0 right-0 p-32 bg-indigo-600/10 rounded-full blur-3xl -translate-y-1/2 translate-x-1/4"></div>
         </div>
         
-        {/* LAYER 2: Konten */}
+        {/* LAYER 2: Konten (Relative & Z-Index tinggi agar muncul di atas background) */}
+        {/* Tidak ada overflow-hidden disini, jadi popup bisa keluar */}
         <div className="relative z-10">
           <div className="flex flex-col md:flex-row md:items-start justify-between gap-4">
             
@@ -52,7 +53,7 @@ export default async function TournamentOverviewPage({ params }: { params: Promi
               </p>
             </div>
 
-            {/* KANAN: Status & Actions */}
+            {/* KANAN: Status & Tombol Share */}
             <div className="flex flex-row md:flex-col items-end gap-3 shrink-0">
               <span className={`inline-block px-4 py-2 rounded-lg text-sm font-bold border text-center ${
                 tournament.status === 'DRAFT' ? 'bg-yellow-500/10 text-yellow-400 border-yellow-500/20' : 
@@ -63,23 +64,15 @@ export default async function TournamentOverviewPage({ params }: { params: Promi
                  tournament.status === 'DRAFT' ? 'DRAFT' : 'ON GOING'}
               </span>
 
-              {/* Action Buttons Group */}
-              <div className="flex items-center gap-2">
-                 <ShareButton tournamentId={id} />
-                 
-                 <DeleteTournamentButton 
-                    id={id} 
-                    redirectTo="/dashboard/tournaments"
-                    className="bg-slate-800 border border-white/10 hover:bg-red-500/10 hover:text-red-500 hover:border-red-500/50 transition-all"
-                 />
-              </div>
+              {/* Tombol Share (Sekarang popup-nya aman) */}
+              <ShareButton tournamentId={id} />
             </div>
 
           </div>
         </div>
       </div>
 
-      {/* --- STATISTIK GRID (Tetap sama) --- */}
+      {/* --- STATISTIK GRID --- */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
         <div className="p-6 rounded-2xl bg-slate-900/50 border border-white/5 hover:border-indigo-500/30 transition-colors group">
           <div className="flex items-center gap-4">
