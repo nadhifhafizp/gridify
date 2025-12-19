@@ -24,7 +24,7 @@ export function DeleteTournamentButton({ id, className = "", isIconOnly = true, 
 
     setIsDeleting(true)
     try {
-      await deleteTournament(id, redirectTo)
+      await deleteTournament(id)
       // Tidak perlu alert sukses, otomatis hilang karena revalidatePath
     } catch (error) {
       alert("Gagal menghapus turnamen")

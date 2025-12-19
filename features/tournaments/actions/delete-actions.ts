@@ -2,59 +2,66 @@
 
 import { createClient } from "@/lib/supabase/server"
 import { revalidatePath } from "next/cache"
-import { redirect } from "next/navigation"
 
-export async function deleteTournament(id: string, redirectPath?: string) {
+// Return type definition agar frontend mudah intellisense
+type DeleteResult = {
+  success: boolean
+  message: string
+}
+
+export async function deleteTournament(id: string): Promise<DeleteResult> {
   const supabase = await createClient()
 
-  // 1. Cek User Session
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) throw new Error("Unauthorized")
+  try {
+    // 1. Cek User Session
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) {
+      return { success: false, message: "Unauthorized: Harap login" }
+    }
 
-  // 2. Mulai Penghapusan Bertahap (Manual Cascade)
-  // Kita harus menghapus dari yang paling "ujung" (child) ke "induk" (parent)
-  
-  // A. Hapus semua Match di turnamen ini
-  const { error: matchError } = await supabase
-    .from('matches')
-    .delete()
-    .eq('tournament_id', id)
-  
-  if (matchError) throw new Error(`Gagal hapus match: ${matchError.message}`)
+    // 2. Mulai Penghapusan Bertahap (Cascade Manual)
+    
+    // A. Hapus Match
+    const { error: matchError } = await supabase
+      .from('matches')
+      .delete()
+      .eq('tournament_id', id)
+    if (matchError) throw new Error(`Gagal hapus match: ${matchError.message}`)
 
-  // B. Hapus semua Stage di turnamen ini
-  const { error: stageError } = await supabase
-    .from('stages')
-    .delete()
-    .eq('tournament_id', id)
+    // B. Hapus Stage
+    const { error: stageError } = await supabase
+      .from('stages')
+      .delete()
+      .eq('tournament_id', id)
+    if (stageError) throw new Error(`Gagal hapus stage: ${stageError.message}`)
 
-  if (stageError) throw new Error(`Gagal hapus stage: ${stageError.message}`)
+    // C. Hapus Peserta
+    const { error: participantError } = await supabase
+      .from('participants')
+      .delete()
+      .eq('tournament_id', id)
+    if (participantError) throw new Error(`Gagal hapus peserta: ${participantError.message}`)
 
-  // C. Hapus semua Peserta di turnamen ini
-  const { error: participantError } = await supabase
-    .from('participants')
-    .delete()
-    .eq('tournament_id', id)
+    // D. Hapus Turnamen
+    const { error: tournamentError } = await supabase
+      .from('tournaments')
+      .delete()
+      .eq('id', id)
+      .eq('owner_id', user.id)
 
-  if (participantError) throw new Error(`Gagal hapus peserta: ${participantError.message}`)
+    if (tournamentError) {
+      throw new Error(`Gagal hapus turnamen: ${tournamentError.message}`)
+    }
 
-  // D. TERAKHIR: Baru hapus Turnamen-nya
-  const { error: tournamentError } = await supabase
-    .from('tournaments')
-    .delete()
-    .eq('id', id)
-    .eq('owner_id', user.id) // Pastikan hanya owner yang bisa hapus
+    // 3. Refresh Halaman List
+    revalidatePath('/dashboard/tournaments')
 
-  if (tournamentError) {
-    throw new Error(`Gagal hapus turnamen: ${tournamentError.message}`)
-  }
+    // 4. Return Sukses (TIDAK REDIRECT DI SINI)
+    // Biarkan Client Component yang melakukan router.push() agar tidak tertangkap sebagai error.
+    return { success: true, message: "Turnamen berhasil dihapus" }
 
-  // 3. Refresh Halaman agar data hilang dari list
-  revalidatePath('/dashboard')
-  revalidatePath('/dashboard/tournaments')
-
-  // 4. Redirect jika diminta
-  if (redirectPath) {
-    redirect(redirectPath)
+  } catch (error: any) {
+    console.error("Delete error:", error)
+    return { success: false, message: error.message || "Terjadi kesalahan sistem" }
   }
 }
