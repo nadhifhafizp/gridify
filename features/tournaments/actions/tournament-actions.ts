@@ -1,15 +1,16 @@
 "use server";
 
 import { createClient } from "@/lib/supabase/server";
-import { revalidatePath } from "next/cache"; // Tambahan
-import { redirect } from "next/navigation";
+import { revalidatePath } from "next/cache";
 import { z } from "zod";
 
+// Helper
 const parseString = (value: FormDataEntryValue | null) => {
   if (!value || value === "") return undefined;
   return value.toString();
 };
 
+// Schema
 const CreateTournamentSchema = z.object({
   title: z.string().min(3, { message: "Nama turnamen minimal 3 karakter" }),
   gameId: z.string().uuid({ message: "Game ID tidak valid" }),
@@ -35,6 +36,7 @@ export async function createTournamentAction(formData: FormData) {
     return { success: false, error: "Unauthorized: Harap login terlebih dahulu" };
   }
 
+  // Parsing & Validasi
   const rawData = {
     title: formData.get("title")?.toString(),
     gameId: formData.get("gameId")?.toString(),
@@ -52,7 +54,7 @@ export async function createTournamentAction(formData: FormData) {
   const { title, gameId, formatType, description, settings } = validatedFields.data;
   const settingsJson = settings ? JSON.parse(settings) : {};
 
-  // Ambil Game Genre
+  // Ambil Genre Game
   const { data: gameData } = await supabase
     .from("games")
     .select("genre")
@@ -88,7 +90,7 @@ export async function createTournamentAction(formData: FormData) {
     sequence_order: order,
   });
 
-  // Logic Stage Generation
+  // Generate Stages
   switch (formatType) {
     case "SINGLE_ELIMINATION":
       stagesPayload.push(createStage("Main Event", "SINGLE_ELIMINATION", 1));
@@ -119,14 +121,13 @@ export async function createTournamentAction(formData: FormData) {
     .insert(stagesPayload);
 
   if (stageError) {
-    // Rollback: Hapus turnamen jika stage gagal dibuat
     await supabase.from("tournaments").delete().eq("id", tournamentId);
     return { success: false, error: "Gagal membuat format stage: " + stageError.message };
   }
 
-  // Tambahkan Revalidate agar dashboard terupdate
+  // Revalidate Dashboard
   revalidatePath('/dashboard/tournaments');
 
-  // Redirect aman dilakukan di sini jika ini dipanggil dari Form Action
-  redirect(`/dashboard/tournaments/${tournamentId}`);
+  // UPDATE: Return ID dan Success true (JANGAN REDIRECT DI SINI)
+  return { success: true, id: tournamentId };
 }
