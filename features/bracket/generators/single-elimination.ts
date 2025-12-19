@@ -7,14 +7,41 @@ export async function generateSingleElimination({
   stageId,
   participants,
 }: BracketGeneratorParams) {
-  // 1. Hitung Ukuran Bracket (Power of 2)
+  // 1. Hitung Ukuran Bracket
   const totalParticipants = participants.length;
-  const bracketSize = getNextPowerOfTwo(totalParticipants);
+  const bracketSize = getNextPowerOfTwo(totalParticipants); // Akan jadi 16 jika peserta 12
   const totalRounds = Math.log2(bracketSize);
+  const byeCount = bracketSize - totalParticipants; // 16 - 12 = 4 BYE
+
+  // --- REVISI PAIRING LOGIC (SEEDING) ---
+  // Kita harus pasangkan BYE dengan Player agar tidak ada Match kosong vs kosong.
+  // Strategi: Berikan BYE ke peserta teratas (Seed 1-4)
+  
+  const bracketPool: (typeof participants[0] | null)[] = [];
+  
+  // Ambil peserta yang beruntung dapat BYE
+  const byePlayers = participants.slice(0, byeCount);
+  
+  // Ambil peserta sisanya yang harus bertanding (Fighting)
+  const fightingPlayers = participants.slice(byeCount);
+  
+  // A. Masukkan Match BYE ke Pool (Format: Player, Null)
+  byePlayers.forEach(p => {
+    bracketPool.push(p);
+    bracketPool.push(null); // Lawannya kosong
+  });
+  
+  // B. Masukkan Match Fight ke Pool (Format: Player, Player)
+  fightingPlayers.forEach(p => {
+    bracketPool.push(p);
+  });
+  
+  // Sekarang bracketPool berisi 16 item yang sudah terurut pair-nya.
+  // ----------------------------------------
 
   const matchesPayload: MatchPayload[] = [];
 
-  // 2. Generate Placeholder Matches (Semua Round)
+  // 2. Generate Placeholder Matches
   for (let round = 1; round <= totalRounds; round++) {
     const matchCount = bracketSize / Math.pow(2, round);
     for (let i = 1; i <= matchCount; i++) {
@@ -26,7 +53,6 @@ export async function generateSingleElimination({
         status: "SCHEDULED",
         participant_a_id: null,
         participant_b_id: null,
-        // FIX: Gunakan empty object {} karena tipe MatchPayload scores wajib object
         scores: {}, 
       });
     }
@@ -53,7 +79,7 @@ export async function generateSingleElimination({
     let nextMatchId = null;
     let isOddMatch = m.match_number % 2 !== 0;
 
-    // Logic Linking
+    // A. Linking Logic
     if (m.round_number < totalRounds) {
       const nextRound = m.round_number + 1;
       const nextMatchNum = Math.ceil(m.match_number / 2);
@@ -67,16 +93,17 @@ export async function generateSingleElimination({
       );
     }
 
-    // Logic Filling Round 1
+    // B. Filling Logic (Pakai bracketPool yang baru)
     if (m.round_number === 1) {
       const index = m.match_number - 1;
-      const pA = participants[index * 2];
-      const pB = participants[index * 2 + 1];
+      // Ambil dari pool yang sudah kita susun rapi di atas
+      const pA = bracketPool[index * 2];
+      const pB = bracketPool[index * 2 + 1];
 
       const isBye = pA && !pB; 
 
       if (isBye) {
-        // --- BYE Logic ---
+        // --- BYE (Auto Win) ---
         updates.push(
           supabase
             .from("matches")
@@ -85,13 +112,12 @@ export async function generateSingleElimination({
               participant_b_id: null,
               status: "COMPLETED",
               winner_id: pA.id,
-              // FIX: Hapus properti 'note' agar sesuai tipe MatchPayload
-              scores: { a: 1, b: 0 }, 
+              scores: { a: 1, b: 0, note: "BYE" }, 
             })
             .eq("id", m.id)
         );
 
-        // Auto Advance ke Ronde 2
+        // Auto Advance ke Round 2
         if (nextMatchId) {
           const targetColumn = isOddMatch ? "participant_a_id" : "participant_b_id";
           updates.push(
@@ -103,7 +129,7 @@ export async function generateSingleElimination({
         }
 
       } else {
-        // --- Normal Logic ---
+        // --- Normal Match ---
         updates.push(
           supabase
             .from("matches")

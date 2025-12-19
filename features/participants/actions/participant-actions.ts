@@ -34,7 +34,7 @@ export async function addParticipant(formData: FormData) {
 }
 
 // ---------------------------------------------------------
-// Action: Hapus Peserta (FIXED: Handle Foreign Key)
+// Action: Hapus Peserta (FIXED: Force Delete & Safe Types)
 // ---------------------------------------------------------
 export async function deleteParticipant(id: string) {
   const supabase = await createClient()
@@ -44,7 +44,7 @@ export async function deleteParticipant(id: string) {
   if (!user) return { success: false, message: "Unauthorized" }
 
   // 2. STEP PENTING: Bersihkan dulu peserta dari Bracket/Match
-  // Jika tidak dibersihkan, database akan menolak penghapusan karena ID-nya dipakai di tabel matches.
+  // Kita ubah slot peserta jadi NULL, tapi scores jadi {} (Objek Kosong) agar tidak error tipe data.
   
   // A. Hapus dari Slot Player A
   const { error: errA } = await supabase
@@ -53,7 +53,7 @@ export async function deleteParticipant(id: string) {
       participant_a_id: null, // Kosongkan slot
       status: 'SCHEDULED',    // Reset status match
       winner_id: null,        // Hapus pemenang jika ada
-      scores: null            // Reset skor
+      scores: {}              // FIX: Gunakan {} bukan null
     })
     .eq('participant_a_id', id)
 
@@ -64,13 +64,14 @@ export async function deleteParticipant(id: string) {
       participant_b_id: null, 
       status: 'SCHEDULED', 
       winner_id: null, 
-      scores: null 
+      scores: {}              // FIX: Gunakan {} bukan null
     })
     .eq('participant_b_id', id)
 
+  // Cek Error Update Match
   if (errA || errB) {
-    console.error("Gagal membersihkan match:", errA, errB)
-    return { success: false, message: "Gagal membersihkan data bracket peserta" }
+    console.error("Gagal membersihkan match (Detail):", errA || errB) // Cek terminal jika gagal
+    return { success: false, message: "Gagal membersihkan data bracket. Cek console server." }
   }
 
   // 3. Eksekusi Hapus Peserta (Setelah aman dari relasi match)
@@ -80,6 +81,8 @@ export async function deleteParticipant(id: string) {
     .eq('id', id)
 
   if (error) {
+    console.error("Gagal hapus peserta (Detail):", error)
+    
     // Error code 23503: Foreign Key Violation (jika masih ada relasi lain yang terlewat)
     if (error.code === '23503') { 
       return { success: false, message: "Gagal: Peserta masih terkait dengan data lain (Match/Team)." }
