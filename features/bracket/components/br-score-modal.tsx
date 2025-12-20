@@ -1,12 +1,13 @@
 "use client";
 
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect } from "react";
 import { X, Save, Trophy, Loader2 } from "lucide-react";
 import { updateBRMatchScoreAction } from "@/features/bracket/actions/match-actions";
-import { Match } from "@/types/database";
+import { Match, Participant } from "@/types/database";
+import { BattleRoyaleResult } from "../types";
 import { toast } from "sonner";
 
-// Standard Point System (PUBG Mobile Style)
+// Poin sistem statik (Bisa dipindah ke config/settings nanti)
 const PLACEMENT_POINTS: Record<number, number> = {
   1: 10,
   2: 6,
@@ -19,13 +20,6 @@ const PLACEMENT_POINTS: Record<number, number> = {
 };
 const KILL_POINT = 1;
 
-type ResultRow = {
-  teamId: string;
-  rank: number | "";
-  kills: number | "";
-  total: number;
-};
-
 export default function BRScoreModal({
   match,
   participants,
@@ -33,36 +27,35 @@ export default function BRScoreModal({
   onClose,
 }: {
   match: Match;
-  participants: any[];
+  participants: Participant[];
   tournamentId: string;
   onClose: () => void;
 }) {
   const [loading, setLoading] = useState(false);
-  const [rows, setRows] = useState<ResultRow[]>([]);
+  const [rows, setRows] = useState<BattleRoyaleResult[]>([]);
 
-  // Filter peserta berdasarkan grup yang bermain di match ini (Logic Penting!)
+  // Logic mengambil peserta yang valid untuk match ini (berdasarkan grouping)
   const playingGroups = match.scores?.groups; // e.g., ["A", "B"]
 
-  // Gunakan useMemo untuk mencegah array baru dibuat setiap render
-  const eligibleParticipants = useMemo(() => {
-    return playingGroups
-      ? participants.filter(
-          (p) =>
-            !p.group_name ||
-            playingGroups.includes(p.group_name) ||
-            playingGroups.includes("All")
-        )
-      : participants;
-  }, [participants, playingGroups]);
+  const eligibleParticipants = playingGroups
+    ? participants.filter(
+        (p) =>
+          !p.group_name ||
+          playingGroups.includes(p.group_name) ||
+          playingGroups.includes("All")
+      )
+    : participants;
 
   useEffect(() => {
-    const existingResults = match.scores?.results as ResultRow[];
+    const existingResults = match.scores?.results as
+      | BattleRoyaleResult[]
+      | undefined;
 
     if (existingResults && existingResults.length > 0) {
-      // Merge existing result with eligible participants
-      const mapped: ResultRow[] = eligibleParticipants.map((p) => {
+      // Merge hasil yang sudah ada dengan peserta
+      const mapped: BattleRoyaleResult[] = eligibleParticipants.map((p) => {
         const found = existingResults.find((r) => r.teamId === p.id);
-        const emptyRow: ResultRow = {
+        const emptyRow: BattleRoyaleResult = {
           teamId: p.id,
           rank: "",
           kills: "",
@@ -70,21 +63,23 @@ export default function BRScoreModal({
         };
         return found || emptyRow;
       });
-      // Sort by rank
+      // Urutkan berdasarkan Rank (jika ada)
       setRows(
         mapped.sort((a, b) => (Number(a.rank) || 99) - (Number(b.rank) || 99))
       );
     } else {
-      // Init empty
-      const initialRows: ResultRow[] = eligibleParticipants.map((p) => ({
-        teamId: p.id,
-        rank: "",
-        kills: "",
-        total: 0,
-      }));
+      // Inisialisasi kosong
+      const initialRows: BattleRoyaleResult[] = eligibleParticipants.map(
+        (p) => ({
+          teamId: p.id,
+          rank: "",
+          kills: "",
+          total: 0,
+        })
+      );
       setRows(initialRows);
     }
-  }, [match.id, match.scores, eligibleParticipants]);
+  }, [match, eligibleParticipants]);
 
   const handleChange = (
     idx: number,
@@ -97,7 +92,7 @@ export default function BRScoreModal({
     if (field === "rank") newRows[idx].rank = value === "" ? "" : val;
     else newRows[idx].kills = value === "" ? "" : val;
 
-    // Recalculate Total
+    // Hitung Total Realtime
     const rank = Number(newRows[idx].rank);
     const kills = Number(newRows[idx].kills);
     const placementPts = PLACEMENT_POINTS[rank] || 0;
@@ -108,6 +103,8 @@ export default function BRScoreModal({
 
   const handleSave = async () => {
     setLoading(true);
+
+    // Bersihkan data sebelum dikirim (convert "" ke 0 atau null logic)
     const cleanResults = rows.map((r) => ({
       teamId: r.teamId,
       rank: Number(r.rank) || 0,
@@ -129,7 +126,7 @@ export default function BRScoreModal({
         toast.error("Gagal menyimpan", { description: result.error });
       }
     } catch (e) {
-      toast.error("Terjadi kesalahan.");
+      toast.error("Terjadi kesalahan sistem.");
     } finally {
       setLoading(false);
     }

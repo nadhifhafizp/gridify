@@ -20,7 +20,13 @@ export interface Tournament {
     | "HYBRID_UCL"
     | "BATTLE_ROYALE";
   status: "DRAFT" | "ONGOING" | "COMPLETED";
-  settings: Json;
+  // Update definisi settings agar kita ingat strukturnya
+  settings: {
+    bestOf?: string;
+    homeAway?: boolean;
+    pointsPerWin?: number;
+    hasThirdPlace?: boolean; // <-- BARU
+  } & Json;
 }
 
 export interface Participant {

@@ -11,7 +11,7 @@ export async function generateBracketAction(tournamentId: string) {
   // 1. Data Fetching
   const { data: participants } = await supabase
     .from("participants")
-    .select("id")
+    .select("id, name") // Ambil name juga untuk debug/types
     .eq("tournament_id", tournamentId)
     .eq("is_verified", true);
 
@@ -21,6 +21,13 @@ export async function generateBracketAction(tournamentId: string) {
     .eq("tournament_id", tournamentId)
     .order("sequence_order", { ascending: true })
     .limit(1)
+    .single();
+
+  // Fetch Settings Turnamen untuk cek hasThirdPlace
+  const { data: tournament } = await supabase
+    .from("tournaments")
+    .select("settings")
+    .eq("id", tournamentId)
     .single();
 
   if (!participants || participants.length < 2)
@@ -33,11 +40,14 @@ export async function generateBracketAction(tournamentId: string) {
   // 3. Routing Generator
   try {
     const shuffledParticipants = shuffleArray(participants);
-    const params = {
+
+    // Siapkan Params
+    const params: generators.BracketGeneratorParams = {
       supabase,
       tournamentId,
       stageId: stage.id,
       participants: shuffledParticipants,
+      settings: tournament?.settings as any, // Cast ke any/object
     };
 
     switch (stage.type) {

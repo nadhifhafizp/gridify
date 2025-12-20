@@ -1,20 +1,20 @@
+"use client";
+
 import MatchCard from "./match-card";
 import { Trophy } from "lucide-react";
-import { Match, Participant } from "@/types/database";
-
-// Tipe gabungan yang dibutuhkan komponen MatchCard
-type MatchWithParticipants = Match & {
-  participant_a: Participant | null;
-  participant_b: Participant | null;
-};
+import { MatchWithParticipants } from "../types";
 
 export default function BracketVisualizer({
   matches,
   isReadOnly = false,
 }: {
-  matches: any[]; // Data dari Supabase seringkali raw, jadi any/unknown lalu cast di map
+  matches: MatchWithParticipants[];
   isReadOnly?: boolean;
 }) {
+  // Filter Match berdasarkan Bracket Type
+  // Round > 0: Upper Bracket / Single Elim
+  // Round < 0: Lower Bracket
+  // Round 999: Grand Final
   const upperBracket = matches.filter(
     (m) => m.round_number > 0 && m.round_number < 999
   );
@@ -23,27 +23,37 @@ export default function BracketVisualizer({
 
   const hasLowerBracket = lowerBracket.length > 0;
 
-  const groupRounds = (matchList: any[]) => {
-    const rounds = matchList.reduce((acc: any, match) => {
-      const round = Math.abs(match.round_number);
-      if (!acc[round]) acc[round] = [];
-      acc[round].push(match);
-      return acc;
-    }, {});
+  // Helper untuk mengelompokkan match berdasarkan round
+  const groupRounds = (matchList: MatchWithParticipants[]) => {
+    const rounds = matchList.reduce<Record<number, MatchWithParticipants[]>>(
+      (acc, match) => {
+        const round = Math.abs(match.round_number);
+        if (!acc[round]) acc[round] = [];
+        acc[round].push(match);
+        return acc;
+      },
+      {}
+    );
+
     return Object.keys(rounds)
       .sort((a, b) => parseInt(a) - parseInt(b))
-      .map((k) => rounds[k]);
+      .map((k) => rounds[parseInt(k)]);
   };
 
   const ubRounds = groupRounds(upperBracket);
   const lbRounds = groupRounds(lowerBracket);
 
-  let finalMatch = null;
-  if (grandFinal.length > 0) finalMatch = grandFinal[0];
-  // Logic fallback untuk final bracket biasa
-  else if (ubRounds.length > 0) {
+  // Logic menentukan Champion
+  let finalMatch: MatchWithParticipants | null = null;
+
+  if (grandFinal.length > 0) {
+    finalMatch = grandFinal[0];
+  } else if (ubRounds.length > 0) {
+    // Fallback untuk Single Elim biasa (Round terakhir adalah final)
     const lastRound = ubRounds[ubRounds.length - 1];
-    if (lastRound && lastRound.length === 1) finalMatch = lastRound[0];
+    if (lastRound && lastRound.length === 1) {
+      finalMatch = lastRound[0];
+    }
   }
 
   const championId = finalMatch?.winner_id;
@@ -58,13 +68,13 @@ export default function BracketVisualizer({
       {/* UPPER BRACKET */}
       <div>
         {hasLowerBracket && (
-          <h3 className="text-indigo-400 font-bold mb-4 sticky left-0">
+          <h3 className="text-indigo-400 font-bold mb-4 sticky left-0 px-4">
             Upper Bracket
           </h3>
         )}
 
         <div className="flex gap-12 min-w-max px-4 items-center">
-          {ubRounds.map((roundMatches: any[], idx) => (
+          {ubRounds.map((roundMatches, idx) => (
             <div
               key={idx}
               className="flex flex-col justify-around gap-8 self-stretch"
@@ -76,8 +86,8 @@ export default function BracketVisualizer({
               </div>
               <div className="flex flex-col justify-center gap-8 h-full">
                 {roundMatches
-                  .sort((a: any, b: any) => a.match_number - b.match_number)
-                  .map((m: MatchWithParticipants) => (
+                  .sort((a, b) => a.match_number - b.match_number)
+                  .map((m) => (
                     <MatchCard key={m.id} match={m} isReadOnly={isReadOnly} />
                   ))}
               </div>
@@ -91,13 +101,13 @@ export default function BracketVisualizer({
                   GRAND FINAL
                 </span>
               </div>
-              {grandFinal.map((m: MatchWithParticipants) => (
+              {grandFinal.map((m) => (
                 <MatchCard key={m.id} match={m} isReadOnly={isReadOnly} />
               ))}
             </div>
           )}
 
-          {/* WINNER CARD */}
+          {/* CHAMPION CARD */}
           {finalMatch?.status === "COMPLETED" && championName && (
             <div className="flex items-center animate-in fade-in slide-in-from-left-8 duration-700">
               <div className="h-0.5 w-12 bg-linear-to-r from-slate-700 to-yellow-500/50"></div>
@@ -126,11 +136,11 @@ export default function BracketVisualizer({
       {/* LOWER BRACKET */}
       {hasLowerBracket && (
         <div className="border-t border-slate-800 pt-8">
-          <h3 className="text-red-400 font-bold mb-4 sticky left-0">
+          <h3 className="text-red-400 font-bold mb-4 sticky left-0 px-4">
             Lower Bracket
           </h3>
           <div className="flex gap-12 min-w-max px-4">
-            {lbRounds.map((roundMatches: any[], idx) => (
+            {lbRounds.map((roundMatches, idx) => (
               <div
                 key={idx}
                 className="flex flex-col justify-around gap-8 self-stretch"
@@ -142,8 +152,8 @@ export default function BracketVisualizer({
                 </div>
                 <div className="flex flex-col justify-center gap-8 h-full">
                   {roundMatches
-                    .sort((a: any, b: any) => a.match_number - b.match_number)
-                    .map((m: MatchWithParticipants) => (
+                    .sort((a, b) => a.match_number - b.match_number)
+                    .map((m) => (
                       <MatchCard key={m.id} match={m} isReadOnly={isReadOnly} />
                     ))}
                 </div>

@@ -3,19 +3,13 @@
 import { useState } from "react";
 import { Edit2 } from "lucide-react";
 import ScoreModal from "./score-modal";
-import { Match, Participant } from "@/types/database";
-
-// Definisikan tipe gabungan untuk props
-type MatchWithParticipants = Match & {
-  participant_a: Participant | null;
-  participant_b: Participant | null;
-};
+import { MatchWithParticipants } from "../types";
 
 export default function MatchCard({
   match,
   isReadOnly = false,
 }: {
-  match: MatchWithParticipants; // Gunakan tipe yang sudah didefinisikan
+  match: MatchWithParticipants;
   isReadOnly?: boolean;
 }) {
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -25,7 +19,7 @@ export default function MatchCard({
   const score = match.scores || { a: 0, b: 0 };
   const winnerId = match.winner_id;
 
-  // Match siap jika kedua partisipan sudah ada (bukan TBD)
+  // Match siap diinput jika kedua partisipan sudah ada (bukan TBD)
   const isReady = !!p1 && !!p2;
   const canEdit = isReady && !isReadOnly;
 
@@ -45,7 +39,7 @@ export default function MatchCard({
               : "border-slate-800 bg-slate-900/40 cursor-default"
           }`}
         >
-          {/* Edit Overlay */}
+          {/* Edit Overlay (Hover) */}
           {canEdit && (
             <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity z-10">
               <div className="bg-indigo-600 text-white px-3 py-1.5 rounded-full text-xs font-bold flex items-center gap-2 transform translate-y-2 group-hover:translate-y-0 transition-transform">
@@ -68,7 +62,7 @@ export default function MatchCard({
             </span>
           </div>
 
-          {/* Team A */}
+          {/* Team A Row */}
           <div
             className={`flex justify-between items-center px-4 py-2 border-b border-slate-800 ${
               winnerId && winnerId === p1?.id ? "bg-indigo-900/20" : ""
@@ -97,7 +91,7 @@ export default function MatchCard({
             </span>
           </div>
 
-          {/* Team B */}
+          {/* Team B Row */}
           <div
             className={`flex justify-between items-center px-4 py-2 ${
               winnerId && winnerId === p2?.id ? "bg-indigo-900/20" : ""
@@ -128,7 +122,6 @@ export default function MatchCard({
         </div>
       </div>
 
-      {/* Modal hanya dirender jika bisa diedit */}
       {canEdit && (
         <ScoreModal
           match={match}

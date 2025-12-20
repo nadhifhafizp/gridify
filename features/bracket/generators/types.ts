@@ -2,12 +2,12 @@ export type BracketGeneratorParams = {
   supabase: any;
   tournamentId: string;
   stageId: string;
-  participants: { id: string; name: string }[]; // Added name for easier debug
+  participants: { id: string; name: string }[];
+  settings?: { hasThirdPlace?: boolean };
 };
 
-// Struktur Data untuk UI Grouping
 export type GroupData = {
-  name: string; // "A", "B", "All"
+  name: string;
   teams: {
     id: string;
     name: string;

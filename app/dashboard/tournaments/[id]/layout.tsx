@@ -1,76 +1,148 @@
-'use client'
+import { ReactNode } from "react";
+import Link from "next/link";
+import { notFound, redirect } from "next/navigation";
+import { createClient } from "@/lib/supabase/server";
+import RealtimeListener from "@/components/providers/tournament/realtime-listener";
+import {
+  Trophy,
+  Users,
+  Settings,
+  LayoutGrid,
+  Share2,
+  ChevronLeft,
+} from "lucide-react";
 
-import Link from 'next/link'
-import { usePathname, useRouter } from 'next/navigation'
-import { ArrowLeft, LayoutGrid, Users, Trophy, Settings, Swords } from 'lucide-react'
-import { use } from 'react'
+type Props = {
+  children: ReactNode;
+  params: Promise<{ id: string }>;
+};
 
-export default function TournamentLayout({
-  children,
-  params,
-}: {
-  children: React.ReactNode
-  params: Promise<{ id: string }>
-}) {
-  // Unwrapping params (Next.js 15+ standard)
-  const { id } = use(params)
-  const pathname = usePathname()
-  const router = useRouter()
+export default async function TournamentLayout({ children, params }: Props) {
+  // 1. Ambil ID dari params (Next.js 15: params harus di-await)
+  const { id } = await params;
+  const supabase = await createClient();
 
-  const baseUrl = `/dashboard/tournaments/${id}`
+  // 2. Validasi User Session
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) {
+    redirect("/login");
+  }
 
-  const menuItems = [
-    { name: 'Overview', href: `${baseUrl}`, icon: LayoutGrid, exact: true },
-    { name: 'Participants', href: `${baseUrl}/participants`, icon: Users },
-    { name: 'Bracket & Match', href: `${baseUrl}/bracket`, icon: Swords },
-    { name: 'Standings', href: `${baseUrl}/standings`, icon: Trophy },
-    { name: 'Settings', href: `${baseUrl}/settings`, icon: Settings },
-  ]
+  // 3. Fetch Data Turnamen (Sekalian validasi ownership)
+  const { data: tournament } = await supabase
+    .from("tournaments")
+    .select("*")
+    .eq("id", id)
+    .single();
+
+  if (!tournament) {
+    notFound();
+  }
+
+  // 4. Cek apakah user adalah pemilik turnamen
+  if (tournament.owner_id !== user.id) {
+    // Jika bukan owner, redirect ke dashboard utama (atau halaman 403)
+    redirect("/dashboard");
+  }
+
+  // Menu Navigasi Tab
+  const navItems = [
+    {
+      label: "Overview",
+      href: `/dashboard/tournaments/${id}`,
+      icon: LayoutGrid,
+    },
+    {
+      label: "Bracket & Matches",
+      href: `/dashboard/tournaments/${id}/bracket`,
+      icon: Trophy,
+    },
+    {
+      label: "Participants",
+      href: `/dashboard/tournaments/${id}/participants`,
+      icon: Users,
+    },
+    {
+      label: "Settings",
+      href: `/dashboard/tournaments/${id}/settings`,
+      icon: Settings,
+    },
+  ];
 
   return (
-    <div className="flex flex-col h-full">
-      {/* Top Navigation Bar khusus Turnamen */}
-      <div className="flex items-center gap-4 pb-6 border-b border-white/5 mb-6">
-        <button 
-          onClick={() => router.push('/dashboard')}
-          className="p-2 rounded-lg bg-slate-800 text-slate-400 hover:text-white hover:bg-slate-700 transition-colors"
-        >
-          <ArrowLeft size={20} />
-        </button>
-        <div>
-          <h2 className="text-lg font-bold text-white">Tournament Control</h2>
-          <p className="text-xs text-slate-400 font-mono">ID: {id.slice(0, 8)}...</p>
+    <div className="flex flex-col h-full min-h-screen">
+      {/* --- REALTIME LISTENER --- */}
+      {/* Dipasang di sini agar aktif di semua sub-halaman turnamen */}
+      <RealtimeListener tournamentId={id} />
+
+      {/* HEADER TURNAMEN */}
+      <header className="bg-slate-900 border-b border-white/5 px-6 py-4">
+        <div className="max-w-7xl mx-auto w-full">
+          {/* Breadcrumb / Back */}
+          <Link
+            href="/dashboard"
+            className="inline-flex items-center text-sm text-slate-400 hover:text-white mb-4 transition-colors"
+          >
+            <ChevronLeft size={16} className="mr-1" /> Back to Dashboard
+          </Link>
+
+          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+            <div>
+              <h1 className="text-2xl font-bold text-white flex items-center gap-2">
+                <Trophy className="text-indigo-500" />
+                {tournament.title}
+              </h1>
+              <p className="text-slate-400 text-sm mt-1">
+                {
+                  tournament.game_id /* Anda bisa fetch nama game jika perlu join */
+                }
+                •{" "}
+                <span className="uppercase text-xs font-bold bg-slate-800 px-2 py-0.5 rounded">
+                  {tournament.format_type.replace("_", " ")}
+                </span>
+              </p>
+            </div>
+
+            {/* Tombol Share (Opsional) */}
+            <div className="flex items-center gap-3">
+              <Link
+                href={`/t/${id}`}
+                target="_blank"
+                className="flex items-center gap-2 px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-lg text-sm font-medium transition-all border border-white/5"
+              >
+                <Share2 size={16} /> Public Page
+              </Link>
+            </div>
+          </div>
+        </div>
+      </header>
+
+      {/* NAVIGATION TABS */}
+      <div className="border-b border-white/5 bg-slate-900/50 sticky top-0 z-40 backdrop-blur-sm">
+        <div className="max-w-7xl mx-auto px-6 overflow-x-auto">
+          <nav className="flex space-x-1">
+            {navItems.map((item) => (
+              <Link
+                key={item.href}
+                href={item.href}
+                className="group relative px-4 py-3 flex items-center gap-2 text-sm font-medium text-slate-400 hover:text-white transition-colors whitespace-nowrap"
+              >
+                <item.icon
+                  size={16}
+                  className="group-hover:text-indigo-400 transition-colors"
+                />
+                {item.label}
+                {/* Indikator Active State bisa ditambahkan dengan logic usePathname jika ingin lebih detail */}
+              </Link>
+            ))}
+          </nav>
         </div>
       </div>
 
-      {/* Sub-Navigation Tabs */}
-      <div className="flex overflow-x-auto gap-2 pb-2 mb-6 scrollbar-hide">
-        {menuItems.map((item) => {
-          const isActive = item.exact 
-            ? pathname === item.href
-            : pathname.startsWith(item.href)
-
-          return (
-            <Link
-              key={item.href}
-              href={item.href}
-              className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all whitespace-nowrap ${
-                isActive
-                  ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-500/20'
-                  : 'bg-slate-900/50 text-slate-400 hover:text-white hover:bg-slate-800'
-              }`}
-            >
-              <item.icon size={16} />
-              {item.name}
-            </Link>
-          )
-        })}
-      </div>
-
-      {/* Konten Halaman (Overview/Bracket/dll) */}
-      <div className="flex-1 animate-in fade-in slide-in-from-bottom-2 duration-300">
-        {children}
-      </div>
+      {/* MAIN CONTENT AREA */}
+      <main className="flex-1 max-w-7xl mx-auto w-full p-6">{children}</main>
     </div>
-  )
+  );
 }

@@ -6,42 +6,16 @@ export async function generateSingleElimination({
   tournamentId,
   stageId,
   participants,
+  settings,
 }: BracketGeneratorParams) {
-  // 1. Hitung Ukuran Bracket
   const totalParticipants = participants.length;
-  const bracketSize = getNextPowerOfTwo(totalParticipants); // Akan jadi 16 jika peserta 12
+  const bracketSize = getNextPowerOfTwo(totalParticipants);
   const totalRounds = Math.log2(bracketSize);
-  const byeCount = bracketSize - totalParticipants; // 16 - 12 = 4 BYE
-
-  // --- REVISI PAIRING LOGIC (SEEDING) ---
-  // Kita harus pasangkan BYE dengan Player agar tidak ada Match kosong vs kosong.
-  // Strategi: Berikan BYE ke peserta teratas (Seed 1-4)
-  
-  const bracketPool: (typeof participants[0] | null)[] = [];
-  
-  // Ambil peserta yang beruntung dapat BYE
-  const byePlayers = participants.slice(0, byeCount);
-  
-  // Ambil peserta sisanya yang harus bertanding (Fighting)
-  const fightingPlayers = participants.slice(byeCount);
-  
-  // A. Masukkan Match BYE ke Pool (Format: Player, Null)
-  byePlayers.forEach(p => {
-    bracketPool.push(p);
-    bracketPool.push(null); // Lawannya kosong
-  });
-  
-  // B. Masukkan Match Fight ke Pool (Format: Player, Player)
-  fightingPlayers.forEach(p => {
-    bracketPool.push(p);
-  });
-  
-  // Sekarang bracketPool berisi 16 item yang sudah terurut pair-nya.
-  // ----------------------------------------
 
   const matchesPayload: MatchPayload[] = [];
+  const hasThirdPlace = settings?.hasThirdPlace === true;
 
-  // 2. Generate Placeholder Matches
+  // 1. Generate Standard Tree Matches
   for (let round = 1; round <= totalRounds; round++) {
     const matchCount = bracketSize / Math.pow(2, round);
     for (let i = 1; i <= matchCount; i++) {
@@ -53,12 +27,28 @@ export async function generateSingleElimination({
         status: "SCHEDULED",
         participant_a_id: null,
         participant_b_id: null,
-        scores: {}, 
+        scores: { a: 0, b: 0 },
       });
     }
   }
 
-  // 3. Insert ke Database
+  // 2. [NEW] Generate Bronze Match (Jika aktif)
+  // Kita taruh di Round Terakhir (sama dengan Final), tapi match_number = 2
+  // Final = Match #1. Bronze = Match #2.
+  if (hasThirdPlace) {
+    matchesPayload.push({
+      tournament_id: tournamentId,
+      stage_id: stageId,
+      round_number: totalRounds, // Round Final
+      match_number: 2, // Match ke-2 di round final (Bronze)
+      status: "SCHEDULED",
+      participant_a_id: null,
+      participant_b_id: null,
+      scores: { a: 0, b: 0 }, // Opsional: Label
+    });
+  }
+
+  // 3. Bulk Insert
   const { data: createdMatches, error } = await supabase
     .from("matches")
     .insert(matchesPayload)
@@ -66,7 +56,7 @@ export async function generateSingleElimination({
 
   if (error) throw new Error(error.message);
 
-  // 4. Mapping ID
+  // 4. Linking & Filling
   const idMap: Record<string, string> = {};
   createdMatches.forEach((m: any) => {
     idMap[`${m.round_number}-${m.match_number}`] = m.id;
@@ -74,76 +64,54 @@ export async function generateSingleElimination({
 
   const updates = [];
 
-  // 5. Linking & Filling Round 1
+  // A. Linking Pemenang (Standard)
   for (const m of createdMatches) {
-    let nextMatchId = null;
-    let isOddMatch = m.match_number % 2 !== 0;
-
-    // A. Linking Logic
+    // Jangan link jika ini adalah Final Round (Round == totalRounds)
     if (m.round_number < totalRounds) {
       const nextRound = m.round_number + 1;
       const nextMatchNum = Math.ceil(m.match_number / 2);
-      nextMatchId = idMap[`${nextRound}-${nextMatchNum}`];
 
-      updates.push(
-        supabase
-          .from("matches")
-          .update({ next_match_id: nextMatchId })
-          .eq("id", m.id)
-      );
-    }
+      // Standar: Winner ke Final/Next Round Match #1
+      // Hati-hati: Jika Round == totalRounds - 1 (Semifinal),
+      // Winner ke Final (Match #1), Loser ke Bronze (Match #2)
 
-    // B. Filling Logic (Pakai bracketPool yang baru)
-    if (m.round_number === 1) {
-      const index = m.match_number - 1;
-      // Ambil dari pool yang sudah kita susun rapi di atas
-      const pA = bracketPool[index * 2];
-      const pB = bracketPool[index * 2 + 1];
-
-      const isBye = pA && !pB; 
-
-      if (isBye) {
-        // --- BYE (Auto Win) ---
+      // Default parent (Winner path)
+      const parentId = idMap[`${nextRound}-${nextMatchNum}`];
+      if (parentId) {
         updates.push(
           supabase
             .from("matches")
-            .update({
-              participant_a_id: pA.id,
-              participant_b_id: null,
-              status: "COMPLETED",
-              winner_id: pA.id,
-              scores: { a: 1, b: 0, note: "BYE" }, 
-            })
-            .eq("id", m.id)
-        );
-
-        // Auto Advance ke Round 2
-        if (nextMatchId) {
-          const targetColumn = isOddMatch ? "participant_a_id" : "participant_b_id";
-          updates.push(
-            supabase
-              .from("matches")
-              .update({ [targetColumn]: pA.id })
-              .eq("id", nextMatchId)
-          );
-        }
-
-      } else {
-        // --- Normal Match ---
-        updates.push(
-          supabase
-            .from("matches")
-            .update({
-              participant_a_id: pA?.id || null,
-              participant_b_id: pB?.id || null,
-              status: "SCHEDULED",
-              scores: { a: 0, b: 0 },
-            })
+            .update({ next_match_id: parentId })
             .eq("id", m.id)
         );
       }
     }
   }
+
+  // B. Filling Round 1 (Seed Participants)
+  const round1Matches = createdMatches
+    .filter((m: any) => m.round_number === 1)
+    .sort((a: any, b: any) => a.match_number - b.match_number);
+
+  round1Matches.forEach((m: any, index: number) => {
+    const pA = participants[index * 2];
+    const pB = participants[index * 2 + 1];
+    const isBye = pA && !pB;
+
+    // Jika BYE, winner langsung ditentukan
+    updates.push(
+      supabase
+        .from("matches")
+        .update({
+          participant_a_id: pA?.id || null,
+          participant_b_id: pB?.id || null,
+          status: isBye ? "COMPLETED" : "SCHEDULED",
+          winner_id: isBye ? pA.id : null,
+          scores: isBye ? { a: 1, b: 0, note: "BYE" } : { a: 0, b: 0 },
+        })
+        .eq("id", m.id)
+    );
+  });
 
   await Promise.all(updates);
 }
