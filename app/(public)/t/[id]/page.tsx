@@ -1,169 +1,195 @@
-import { createClient } from '@/lib/supabase/server'
-import { Swords, Trophy, LayoutList, GitGraph, Target, Calendar } from 'lucide-react'
-import Link from 'next/link'
-import BracketVisualizer from '@/features/bracket/components/bracket-visualizer'
-import StandingsTable from '@/features/bracket/components/standings-table'
-import BRLeaderboard from '@/features/bracket/components/br-leaderboard'
-import ShareButton from '@/features/tournaments/components/share-button'
-import { Metadata, ResolvingMetadata } from 'next'
+import { notFound } from "next/navigation";
+import { createClient } from "@/lib/supabase/server";
+import RealtimeListener from "@/components/providers/tournament/realtime-listener";
+import BracketVisualizer from "@/features/bracket/components/bracket-visualizer";
+import BattleRoyaleView from "@/features/bracket/components/br-view";
+import StandingsTable from "@/features/bracket/components/standings-table";
+import { Trophy, Calendar, Gamepad2, Users } from "lucide-react";
 
-export const dynamic = 'force-dynamic'
+// Force dynamic rendering karena halaman ini butuh data realtime/fresh
+export const dynamic = "force-dynamic";
 
 type Props = {
-  params: Promise<{ id: string }>
-  searchParams: Promise<{ stage?: string }>
-}
+  params: Promise<{ id: string }>;
+};
 
-const getGameName = (gamesData: any) => {
-  if (Array.isArray(gamesData)) return gamesData[0]?.name || 'Unknown Game'
-  return gamesData?.name || 'Unknown Game'
-}
+export default async function PublicTournamentPage({ params }: Props) {
+  const { id } = await params;
+  const supabase = await createClient();
 
-export async function generateMetadata({ params }: Props): Promise<Metadata> {
-  const { id } = await params
-  const supabase = await createClient()
-  const { data: tournament } = await supabase.from('tournaments').select('title, description, games(name)').eq('id', id).single()
-  
-  if (!tournament) return { title: 'Tournament Not Found' }
-  const gameName = getGameName(tournament.games)
+  // 1. Fetch Tournament Data
+  const { data: tournament } = await supabase
+    .from("tournaments")
+    .select("*, games(*)") // Join games untuk nama game
+    .eq("id", id)
+    .single();
 
-  return {
-    title: `${tournament.title} | Gridify`,
-    description: `Ikuti klasemen dan jadwal ${gameName}.`,
+  if (!tournament) {
+    notFound();
   }
-}
 
-export default async function PublicTournamentPage({ params, searchParams }: Props) {
-  const { id } = await params
-  const { stage: stageIdParam } = await searchParams
-  const supabase = await createClient()
+  // 2. Fetch Active Stage
+  // Ambil stage dengan sequence terkecil (Main Stage) atau yang sedang berjalan
+  const { data: stages } = await supabase
+    .from("stages")
+    .select("*")
+    .eq("tournament_id", id)
+    .order("sequence_order", { ascending: true });
 
-  // 1. Ambil Data Turnamen
-  const { data: tournament } = await supabase.from('tournaments').select('*, games(*)').eq('id', id).single()
-  if (!tournament) return <div className="text-white text-center py-20">Turnamen tidak ditemukan.</div>
-  const gameName = getGameName(tournament.games)
+  const activeStage = stages?.[0];
 
-  // 2. Ambil Stage & Tentukan Aktif
-  const { data: stages } = await supabase.from('stages').select('*').eq('tournament_id', id).order('sequence_order', { ascending: true })
-  
-  const activeStage = stageIdParam ? stages?.find(s => s.id === stageIdParam) : stages?.[0]
-
-  // 3. Ambil Match
+  // 3. Fetch Matches & Participants
+  // Kita perlu mengambil match yang sesuai dengan stage aktif
   const { data: matches } = await supabase
-    .from('matches')
-    .select(`*, participant_a:participant_a_id(*), participant_b:participant_b_id(*)`)
-    .eq('stage_id', activeStage?.id)
-    .order('round_number', { ascending: true })
-    .order('match_number', { ascending: true })
+    .from("matches")
+    .select(
+      "*, participant_a:participants!participant_a_id(*), participant_b:participants!participant_b_id(*)"
+    )
+    .eq("tournament_id", id)
+    .eq("stage_id", activeStage?.id)
+    .order("match_number", { ascending: true });
 
-  // 4. Ambil Peserta
-  const { data: participants } = await supabase.from('participants').select('*').eq('tournament_id', id)
+  const { data: participants } = await supabase
+    .from("participants")
+    .select("*")
+    .eq("tournament_id", id)
+    .eq("is_verified", true);
 
-  // Cek Data
-  const hasBracket = matches && matches.length > 0
+  // -- RENDER HELPERS --
+  const renderContent = () => {
+    // State: Belum ada match generated
+    if (!activeStage || !matches || matches.length === 0) {
+      return (
+        <div className="flex flex-col items-center justify-center py-20 text-center border border-dashed border-slate-800 rounded-2xl bg-slate-900/50">
+          <Trophy className="text-slate-600 mb-4" size={48} />
+          <h3 className="text-xl font-bold text-white">
+            Turnamen Belum Dimulai
+          </h3>
+          <p className="text-slate-400 mt-2">
+            Jadwal pertandingan belum tersedia.
+          </p>
+        </div>
+      );
+    }
+
+    switch (activeStage.type) {
+      case "SINGLE_ELIMINATION":
+      case "DOUBLE_ELIMINATION":
+        return (
+          <div className="bg-slate-900/50 border border-white/5 rounded-2xl p-6 overflow-x-auto min-h-[500px]">
+            <BracketVisualizer matches={matches} isReadOnly={true} />
+          </div>
+        );
+
+      case "LEADERBOARD": // Battle Royale
+        return (
+          <BattleRoyaleView
+            matches={matches}
+            participants={participants || []}
+            tournamentId={id}
+            isReadOnly={true}
+          />
+        );
+
+      case "ROUND_ROBIN": // Liga / Group Stage
+        return (
+          <StandingsTable
+            matches={matches}
+            participants={participants || []}
+            tournamentId={id} // <--- FIX: Property required ditambahkan
+            isReadOnly={true} // <--- Added: Mode baca saja untuk publik
+          />
+        );
+
+      default:
+        return (
+          <p className="text-center text-slate-500">
+            Format turnamen tidak didukung.
+          </p>
+        );
+    }
+  };
 
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-200 font-sans selection:bg-indigo-500/30 pb-20">
-      
-      {/* HEADER BANNER */}
-      <div className="bg-slate-900 border-b border-white/5 pt-12 pb-0 px-4">
-        <div className="max-w-6xl mx-auto">
-          <div className="flex flex-col md:flex-row gap-6 items-center md:items-start text-center md:text-left mb-8">
-            <div className="w-20 h-20 rounded-2xl bg-linear-to-br from-indigo-600 to-purple-600 flex items-center justify-center shadow-2xl shadow-indigo-500/20 shrink-0">
-              <Trophy size={40} className="text-white" />
-            </div>
-            <div className="flex-1">
-              <span className="inline-block px-3 py-1 rounded-full bg-slate-800 text-indigo-400 text-xs font-bold border border-slate-700 mb-2">
-                {gameName}
+    <main className="min-h-screen bg-slate-950 text-slate-200 pb-20 selection:bg-indigo-500/30">
+      {/* --- REALTIME LISTENER --- */}
+      {/* Penting: Agar penonton melihat skor berubah live tanpa refresh */}
+      <RealtimeListener tournamentId={id} />
+
+      {/* HERO SECTION */}
+      <div className="relative bg-slate-900 border-b border-white/5 pt-20 pb-10 px-6 overflow-hidden">
+        {/* Background Accents */}
+        <div className="absolute top-0 left-0 w-full h-full overflow-hidden pointer-events-none">
+          <div className="absolute top-[-50%] right-[-10%] w-[600px] h-[600px] bg-indigo-600/10 rounded-full blur-[100px]" />
+          <div className="absolute bottom-[-50%] left-[-10%] w-[500px] h-[500px] bg-purple-600/10 rounded-full blur-[100px]" />
+        </div>
+
+        <div className="relative max-w-7xl mx-auto flex flex-col md:flex-row items-start md:items-center justify-between gap-6">
+          <div>
+            <div className="flex items-center gap-2 mb-4">
+              <span className="px-3 py-1 rounded-full bg-indigo-500/10 border border-indigo-500/20 text-indigo-400 text-xs font-bold uppercase tracking-wider">
+                {tournament.status}
               </span>
-              <h1 className="text-3xl md:text-4xl font-black text-white mb-2">{tournament.title}</h1>
-              <p className="text-slate-400 max-w-2xl text-sm">{tournament.description || 'Tidak ada deskripsi.'}</p>
+              <span className="px-3 py-1 rounded-full bg-slate-800 border border-white/5 text-slate-400 text-xs font-bold uppercase tracking-wider">
+                {tournament.format_type.replace("_", " ")}
+              </span>
             </div>
-            <div className="flex flex-col gap-3 items-center md:items-end">
-               <span className={`px-4 py-2 rounded-lg text-sm font-bold border ${tournament.status === 'COMPLETED' ? 'bg-slate-800 border-slate-700' : 'bg-green-500/10 text-green-400 border-green-500/20'}`}>
-                 {tournament.status === 'COMPLETED' ? 'SELESAI' : 'SEDANG BERLANGSUNG'}
-               </span>
-               <ShareButton tournamentId={id} />
+
+            <h1 className="text-4xl md:text-5xl font-black text-white tracking-tight mb-4">
+              {tournament.title}
+            </h1>
+
+            <div className="flex flex-wrap gap-6 text-sm text-slate-400">
+              <div className="flex items-center gap-2">
+                <Gamepad2 size={16} className="text-indigo-400" />
+                <span>{tournament.games?.name || "Game Undefined"}</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <Users size={16} className="text-indigo-400" />
+                <span>{participants?.length || 0} Participants</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <Calendar size={16} className="text-indigo-400" />
+                <span>
+                  {new Date(tournament.created_at).toLocaleDateString()}
+                </span>
+              </div>
             </div>
           </div>
 
-          {/* STAGE TABS (Navigasi Antar Babak) */}
-          {stages && stages.length > 0 && (
-            <div className="flex overflow-x-auto custom-scrollbar">
-              {stages.map((s) => {
-                const isActive = activeStage?.id === s.id
-                return (
-                  <Link
-                    key={s.id}
-                    href={`?stage=${s.id}`}
-                    className={`px-6 py-4 text-sm font-bold border-b-2 transition-all whitespace-nowrap ${
-                      isActive 
-                        ? 'border-indigo-500 text-white bg-white/5' 
-                        : 'border-transparent text-slate-500 hover:text-slate-300 hover:bg-white/5'
-                    }`}
-                  >
-                    {s.name}
-                  </Link>
-                )
-              })}
-            </div>
+          {/* Action / Register Button (Placeholder Logic) */}
+          {tournament.status === "DRAFT" && (
+            <button className="px-6 py-3 bg-white text-slate-950 font-bold rounded-xl hover:bg-slate-200 transition-colors shadow-lg shadow-white/5">
+              Register Now
+            </button>
           )}
         </div>
       </div>
 
-      {/* MAIN CONTENT */}
-      <div className="max-w-6xl mx-auto px-4 py-8">
-        {!activeStage ? (
-          <div className="text-center py-20 text-slate-500">Data tidak ditemukan.</div>
-        ) : !hasBracket ? (
-          <div className="text-center py-20 border-2 border-dashed border-slate-800 rounded-2xl bg-slate-900/20">
-            <Swords size={40} className="text-slate-600 mx-auto mb-4" />
-            <h3 className="text-xl font-bold text-white">Belum Ada Pertandingan</h3>
-            <p className="text-slate-500">Jadwal untuk babak ini belum dibuat oleh panitia.</p>
-          </div>
-        ) : (
-          <div className="animate-in fade-in slide-in-from-bottom-4 duration-500">
-            
-            {/* 1. TABLE VIEW */}
-            {activeStage.type === 'ROUND_ROBIN' && (
-              <StandingsTable 
-                matches={matches || []} 
-                participants={participants || []} 
-                tournamentId={id} 
-                isReadOnly={true}
-              />
-            )}
-
-            {/* 2. BRACKET VIEW (FIXED LAYOUT) */}
-            {(activeStage.type === 'SINGLE_ELIMINATION' || activeStage.type === 'DOUBLE_ELIMINATION') && (
-              // Hapus overflow-hidden dari sini, pindahkan logika scroll ke Visualizer
-              <div className="bg-slate-900/30 border border-white/5 rounded-2xl p-6 min-h-[400px]">
-                 <div className="flex justify-end mb-4">
-                    <span className="px-3 py-1 bg-black/40 backdrop-blur rounded-full text-xs text-slate-500 border border-white/5">
-                       Geser Horizontal 👉
-                    </span>
-                 </div>
-                 {/* Visualizer menangani scrollnya sendiri */}
-                 <BracketVisualizer matches={matches || []} isReadOnly={true} />
-              </div>
-            )}
-
-            {/* 3. LEADERBOARD VIEW */}
-            {activeStage.type === 'LEADERBOARD' && (
-               <BRLeaderboard 
-                 matches={matches || []}
-                 participants={participants || []}
-                 tournamentId={id}
-                 isReadOnly={true}
-               />
-            )}
+      {/* CONTENT AREA */}
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10 space-y-8">
+        {/* Description (Jika ada) */}
+        {tournament.description && (
+          <div className="prose prose-invert max-w-none bg-slate-900/30 p-6 rounded-2xl border border-white/5">
+            <h3 className="text-lg font-bold text-white mb-2">
+              About this Tournament
+            </h3>
+            <p className="text-slate-400 whitespace-pre-line">
+              {tournament.description}
+            </p>
           </div>
         )}
-      </div>
 
-      <div className="text-center py-8 text-slate-600 text-sm">
-        Powered by <span className="text-indigo-500 font-bold">Gridify</span>
+        {/* Dynamic Content (Bracket/Leaderboard/Standings) */}
+        <div className="animate-in fade-in slide-in-from-bottom-4 duration-700">
+          <div className="flex items-center gap-2 mb-6">
+            <Trophy className="text-yellow-500" />
+            <h2 className="text-2xl font-bold text-white">Live Results</h2>
+          </div>
+
+          {renderContent()}
+        </div>
       </div>
-    </div>
-  )
+    </main>
+  );
 }

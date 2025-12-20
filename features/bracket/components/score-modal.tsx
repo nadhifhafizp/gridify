@@ -3,14 +3,8 @@
 import { useState } from "react";
 import { X, Save, Loader2 } from "lucide-react";
 import { updateMatchScoreAction } from "@/features/bracket/actions/match-actions";
-import { Match, Participant } from "@/types/database";
+import { MatchWithParticipants } from "../types";
 import { toast } from "sonner";
-
-// Extend tipe Match agar TypeScript tau ada object participant
-type MatchWithParticipants = Match & {
-  participant_a: Participant | null;
-  participant_b: Participant | null;
-};
 
 type ScoreModalProps = {
   match: MatchWithParticipants;

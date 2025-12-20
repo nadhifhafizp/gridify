@@ -2,7 +2,8 @@
 
 import { createClient } from "@/lib/supabase/server";
 import { revalidatePath } from "next/cache";
-import { Match, Stage } from "@/types/database";
+import { Match, Stage, Tournament } from "@/types/database";
+import * as progressionService from "../services/progression-service";
 
 // --- ACTION 1: Update Skor 1vs1 (Bracket/League) ---
 export async function updateMatchScoreAction(
@@ -13,20 +14,27 @@ export async function updateMatchScoreAction(
 ) {
   const supabase = await createClient();
 
+  // 1. Validasi Basic
   if (scoreA < 0 || scoreB < 0)
     return { success: false, error: "Skor tidak boleh negatif" };
 
+  // 2. Fetch Match Data (Join Stages & Tournament Settings)
   const { data: matchData, error: fetchError } = await supabase
     .from("matches")
-    .select("*, stages(id, type, sequence_order)")
+    .select("*, stages(id, type, sequence_order), tournaments(settings)")
     .eq("id", matchId)
     .single();
 
   if (fetchError || !matchData)
     return { success: false, error: "Match tidak ditemukan" };
 
-  const match = matchData as unknown as Match & { stages: Stage };
+  // Casting Type
+  const match = matchData as unknown as Match & {
+    stages: Stage;
+    tournaments: { settings: { hasThirdPlace?: boolean } };
+  };
 
+  // 3. Tentukan Winner & Loser
   let winnerId: string | null = null;
   let loserId: string | null = null;
 
@@ -38,14 +46,14 @@ export async function updateMatchScoreAction(
     loserId = match.participant_a_id;
   }
 
-  // Preserve existing scores properties if needed, but for 1v1 usually simple overwrite is fine
-  // But strictly speaking, merging is safer.
-  const newScores = { ...match.scores, a: scoreA, b: scoreB };
+  // 4. Update Database
+  const currentScores = match.scores || {};
+  const updatedScores = { ...currentScores, a: scoreA, b: scoreB };
 
   const { error: updateError } = await supabase
     .from("matches")
     .update({
-      scores: newScores, // Gunakan merged scores
+      scores: updatedScores,
       winner_id: winnerId,
       status: "COMPLETED",
     })
@@ -53,35 +61,55 @@ export async function updateMatchScoreAction(
 
   if (updateError) return { success: false, error: updateError.message };
 
-  // ADVANCE LOGIC
+  // =====================================
+  // 5. SERVICE LAYER DELEGATION
+  // =====================================
   const stageType = match.stages?.type;
+  const settings = match.tournaments?.settings || {};
 
-  if (winnerId) {
-    if (match.next_match_id) {
-      await advanceParticipant(
-        supabase,
-        match.next_match_id,
-        match.match_number,
-        winnerId
-      );
+  try {
+    if (winnerId) {
+      // A. Advance Winner
+      if (match.next_match_id) {
+        await progressionService.advanceParticipant(supabase, match, winnerId);
+      }
+
+      // B. Drop Loser (Double Elim)
+      if (
+        stageType === "DOUBLE_ELIMINATION" &&
+        loserId &&
+        match.round_number > 0 &&
+        match.round_number < 999
+      ) {
+        await progressionService.dropToLowerBracket(supabase, match, loserId);
+      }
+
+      // C. Bronze Match Logic (Single Elim)
+      // Jika Single Elim, ada loser, dan setting aktif -> Cek apakah ini Semifinal
+      if (
+        stageType === "SINGLE_ELIMINATION" &&
+        loserId &&
+        settings.hasThirdPlace
+      ) {
+        await progressionService.handleSemiFinalLoser(
+          supabase,
+          match,
+          loserId,
+          settings
+        );
+      }
     }
 
-    if (
-      stageType === "DOUBLE_ELIMINATION" &&
-      loserId &&
-      match.round_number > 0 &&
-      match.round_number < 999
-    ) {
-      await dropToLowerBracket(supabase, match, loserId);
-    }
+    // 6. Cek Penyelesaian Turnamen
+    await progressionService.checkAndCompleteStage(
+      supabase,
+      tournamentId,
+      match.stage_id,
+      match.stages.sequence_order
+    );
+  } catch (error: any) {
+    console.error("Progression Error:", error);
   }
-
-  await checkTournamentCompletion(
-    supabase,
-    tournamentId,
-    match.stage_id,
-    match.stages.sequence_order
-  );
 
   revalidatePath(`/dashboard/tournaments/${tournamentId}`);
   revalidatePath(`/dashboard/tournaments/${tournamentId}/bracket`);
@@ -89,7 +117,7 @@ export async function updateMatchScoreAction(
   return { success: true };
 }
 
-// --- ACTION 2: Update Skor Battle Royale (DIPERBAIKI) ---
+// ... (Action Battle Royale tetap sama)
 export async function updateBRMatchScoreAction(
   matchId: string,
   results: { teamId: string; rank: number; kills: number; total: number }[],
@@ -101,27 +129,15 @@ export async function updateBRMatchScoreAction(
     return { success: false, error: "Data hasil tidak valid" };
   }
 
-  // 1. Ambil data match lama untuk mendapatkan 'groups' yang sudah ada
-  const { data: existingMatch, error: fetchError } = await supabase
+  const { data: existingMatch } = await supabase
     .from("matches")
     .select("scores")
     .eq("id", matchId)
     .single();
 
-  if (fetchError || !existingMatch) {
-    return { success: false, error: "Match tidak ditemukan" };
-  }
+  const currentScores = existingMatch?.scores || {};
+  const updatedScores = { ...(currentScores as object), results };
 
-  // 2. Gabungkan data lama (groups) dengan data baru (results)
-  // Casting ke any/Match karena Supabase return type kadang loose
-  const currentScores = existingMatch.scores as Match["scores"];
-
-  const updatedScores = {
-    ...currentScores, // Pertahankan properti 'groups'
-    results: results, // Update hasil pertandingan
-  };
-
-  // 3. Simpan ke Database
   const { error } = await supabase
     .from("matches")
     .update({
@@ -134,82 +150,4 @@ export async function updateBRMatchScoreAction(
 
   revalidatePath(`/dashboard/tournaments/${tournamentId}/bracket`);
   return { success: true };
-}
-
-// --- HELPER FUNCTIONS ---
-
-async function advanceParticipant(
-  supabase: any,
-  targetMatchId: string,
-  currentMatchNum: number,
-  participantId: string
-) {
-  const isOdd = currentMatchNum % 2 !== 0;
-  const targetCol = isOdd ? "participant_a_id" : "participant_b_id";
-  await supabase
-    .from("matches")
-    .update({ [targetCol]: participantId })
-    .eq("id", targetMatchId);
-}
-
-async function dropToLowerBracket(
-  supabase: any,
-  currentMatch: Match,
-  loserId: string
-) {
-  const wbRound = currentMatch.round_number;
-  const targetLBRound = -wbRound;
-
-  const { data: targetMatches } = await supabase
-    .from("matches")
-    .select("*")
-    .eq("stage_id", currentMatch.stage_id)
-    .eq("round_number", targetLBRound)
-    .order("match_number", { ascending: true });
-
-  if (!targetMatches || targetMatches.length === 0) return;
-
-  for (const m of targetMatches) {
-    if (!m.participant_a_id) {
-      await supabase
-        .from("matches")
-        .update({ participant_a_id: loserId })
-        .eq("id", m.id);
-      break;
-    } else if (!m.participant_b_id) {
-      await supabase
-        .from("matches")
-        .update({ participant_b_id: loserId })
-        .eq("id", m.id);
-      break;
-    }
-  }
-}
-
-async function checkTournamentCompletion(
-  supabase: any,
-  tournamentId: string,
-  stageId: string,
-  stageOrder: number
-) {
-  const { count: stagesAfter } = await supabase
-    .from("stages")
-    .select("*", { count: "exact", head: true })
-    .eq("tournament_id", tournamentId)
-    .gt("sequence_order", stageOrder);
-
-  if (stagesAfter === 0) {
-    const { count: pendingMatches } = await supabase
-      .from("matches")
-      .select("*", { count: "exact", head: true })
-      .eq("stage_id", stageId)
-      .neq("status", "COMPLETED");
-
-    if (pendingMatches === 0) {
-      await supabase
-        .from("tournaments")
-        .update({ status: "COMPLETED" })
-        .eq("id", tournamentId);
-    }
-  }
 }
