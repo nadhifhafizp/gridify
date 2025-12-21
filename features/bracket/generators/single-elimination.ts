@@ -1,27 +1,10 @@
 import { BracketGeneratorParams, MatchPayload } from "./types";
-import { getNextPowerOfTwo } from "../utils/bracket-math";
-
-/**
- * HELPER: Membuat urutan seeding standar turnamen.
- * Contoh untuk 8 slot: [1, 8, 4, 5, 2, 7, 3, 6]
- * Ini memastikan Seed 1 (Rank 1) vs Seed 8, Seed 2 vs Seed 7, dst.
- */
-function getStandardSeedingOrder(size: number): number[] {
-  if (size === 0) return [];
-  let rounds = Math.log2(size);
-  let order = [1, 2]; // Awal: 1 vs 2
-
-  for (let i = 0; i < rounds - 1; i++) {
-    let next = [];
-    let sum = order.length * 2 + 1; // Magic number untuk pairing
-    for (let val of order) {
-      next.push(val);
-      next.push(sum - val);
-    }
-    order = next;
-  }
-  return order;
-}
+import { 
+  getNextPowerOfTwo, 
+  distributeParticipants, 
+  getStandardSeedingOrder,
+  shuffleArray 
+} from "../utils/bracket-math";
 
 export async function generateSingleElimination({
   supabase,
@@ -30,32 +13,38 @@ export async function generateSingleElimination({
   participants,
   settings,
 }: BracketGeneratorParams) {
-  // 1. Hitung Ukuran Bracket
-  const totalParticipants = participants.length;
+  
+  // 1. [SHUFFLE] Acak peserta dulu agar adil (tidak urut ID)
+  let processedParticipants = shuffleArray(participants);
+
+  // 2. [DISTRIBUTE] Sebar peserta multi-slot agar tidak Team Kill
+  processedParticipants = distributeParticipants(processedParticipants);
+
+  // 3. [CALCULATE] Hitung ukuran bracket
+  const totalParticipants = processedParticipants.length;
   const bracketSize = getNextPowerOfTwo(totalParticipants);
   const totalRounds = Math.log2(bracketSize);
 
-  // --- LOGIKA SEEDING (VALID) ---
-  // Kita gunakan urutan standar (1 vs 16, 2 vs 15) agar bracket seimbang.
-  // Seed 1 di Match #1 (Atas), Seed 2 di Match #5 (Bawah/Tengah).
-  
+  // 4. [SEEDING] Generate urutan seeding standar (1 vs 16, dll)
+  // Peserta hasil distribusi dianggap sebagai "Seed 1, Seed 2..." secara berurutan
   const seedingOrder = getStandardSeedingOrder(bracketSize);
   
-  // Mapping urutan ranking ke peserta asli
-  // Rank 1 = participants[0], Rank 16 = BYE (jika peserta cuma 14)
+  // Map urutan seeding ke objek Peserta
   const bracketPool = seedingOrder.map((rank) => {
+    // Jika rank <= jumlah peserta, ambil orangnya
     if (rank <= totalParticipants) {
-      return participants[rank - 1];
+      return processedParticipants[rank - 1];
     }
-    return null; // Slot ini kosong (BYE) karena rank > jumlah peserta
+    // Jika rank > jumlah peserta, berarti slot ini kosong (BYE)
+    return null; 
   });
   
-  // ------------------------------
+  // ---------------------------------------------------------
 
   const matchesPayload: MatchPayload[] = [];
   const hasThirdPlace = settings?.hasThirdPlace === true;
 
-  // 2. Generate Match Structure (Placeholders)
+  // 5. Generate Match Placeholder (Struktur Tree)
   for (let round = 1; round <= totalRounds; round++) {
     const matchCount = bracketSize / Math.pow(2, round);
     for (let i = 1; i <= matchCount; i++) {
@@ -72,7 +61,8 @@ export async function generateSingleElimination({
     }
   }
 
-  // 3. Generate Bronze Match (Match #2 di Final Round)
+  // 6. Generate Bronze Match (Opsional)
+  // Ditaruh di Round Terakhir (Match ke-2)
   if (hasThirdPlace) {
     matchesPayload.push({
       tournament_id: tournamentId,
@@ -86,7 +76,7 @@ export async function generateSingleElimination({
     });
   }
 
-  // 4. Insert ke Database
+  // 7. Insert ke Database
   const { data: createdMatches, error } = await supabase
     .from("matches")
     .insert(matchesPayload)
@@ -94,7 +84,7 @@ export async function generateSingleElimination({
 
   if (error) throw new Error(error.message);
 
-  // 5. Mapping ID untuk Linking
+  // 8. Linking & Filling Round 1
   const idMap: Record<string, string> = {};
   createdMatches.forEach((m: any) => {
     idMap[`${m.round_number}-${m.match_number}`] = m.id;
@@ -102,13 +92,12 @@ export async function generateSingleElimination({
 
   const updates = [];
 
-  // 6. Linking & Filling Round 1
   for (const m of createdMatches) {
     let nextMatchId = null;
     const isOddMatch = m.match_number % 2 !== 0;
 
-    // A. Linking Logic (Path Pemenang)
-    // Kecuali Final Round (Bronze match logic terpisah/tidak advance)
+    // A. LINKING: Sambungkan ke match berikutnya
+    // (Kecuali Final Round, logika Bronze terpisah)
     if (m.round_number < totalRounds) {
       const nextRound = m.round_number + 1;
       const nextMatchNum = Math.ceil(m.match_number / 2);
@@ -124,20 +113,20 @@ export async function generateSingleElimination({
       }
     }
 
-    // B. Filling Logic (Hanya Round 1)
+    // B. FILLING: Isi peserta Round 1 dari bracketPool
     if (m.round_number === 1) {
       const index = m.match_number - 1;
-      // bracketPool sudah tersusun rapi: [Match1_P1, Match1_P2, Match2_P1...]
+      
       const pA = bracketPool[index * 2];
       const pB = bracketPool[index * 2 + 1];
 
-      // Cek BYE (Jika pA ada tapi pB null)
-      // Note: Algoritma seeding menjamin pA selalu seed lebih tinggi dari pB, 
-      // jadi jika ada BYE, pasti pB yang null.
+      // Cek BYE: Dalam seeding standard, jika ada BYE, pasti pB yang kosong
       const isBye = pA && !pB;
 
       if (isBye) {
-        // --- BYE (Auto Win & Auto Advance) ---
+        // --- BYE LOGIC ---
+        // 1. Set Status COMPLETED
+        // 2. Set Winner = pA
         updates.push(
           supabase
             .from("matches")
@@ -151,12 +140,9 @@ export async function generateSingleElimination({
             .eq("id", m.id)
         );
 
-        // Auto Advance ke Round 2
+        // 3. Auto Advance ke Round 2 (Langsung Update Next Match)
         if (nextMatchId) {
-          const targetColumn = isOddMatch
-            ? "participant_a_id"
-            : "participant_b_id";
-            
+          const targetColumn = isOddMatch ? "participant_a_id" : "participant_b_id";   
           updates.push(
             supabase
               .from("matches")
@@ -165,7 +151,7 @@ export async function generateSingleElimination({
           );
         }
       } else {
-        // --- Normal Match ---
+        // --- NORMAL MATCH ---
         updates.push(
           supabase
             .from("matches")
