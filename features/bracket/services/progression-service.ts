@@ -16,35 +16,43 @@ export async function dropToLowerBracket(
   // Safety: Jangan jalankan jika ini match LB (negatif) atau Grand Final (999)
   if (wbRound < 0 || wbRound === 999) return;
 
-  // 1. Tentukan Target Round LB
-  // Rumus: WB R1 -> LB R1 | WB R2 -> LB R3 | WB R3 -> LB R5 (Final LB)
-  const targetLBRound = -((wbRound * 2) - 1);
+  // --- FIX 1: TENTUKAN TARGET ROUND YANG BENAR ---
+  // Rumus default: WB R1 -> LB R1 | WB R2 -> LB R3
+  let targetLBRound = -((wbRound * 2) - 1);
 
-  // 2. Tentukan Target Match Number & Slot
-  let targetMatchNum = 0;
-  let targetSlot = "participant_a_id"; 
-
-  if (wbRound === 1) {
-    // SPECIAL CASE: WB Round 1
-    // 2 Match WB (1 & 2) bergabung ke 1 Match LB.
-    // Ganjil masuk Slot A, Genap masuk Slot B.
-    targetMatchNum = Math.ceil(currentMatch.match_number / 2);
-    targetSlot = currentMatch.match_number % 2 !== 0 ? "participant_a_id" : "participant_b_id";
-  } else {
-    // STANDARD CASE: WB Round 2 ke atas
-    // Match WB langsung drop ke Match LB yang sesuai.
-    // Biasanya Loser WB mengambil Slot A, menunggu Winner dari LB Round sebelumnya.
-    targetMatchNum = Math.ceil(currentMatch.match_number / 2); // Mapping match number (4 match -> 2 match -> 1 match)
+  // Cek apakah ini Upper Bracket Final?
+  // Caranya: Cek apakah match selanjutnya adalah Grand Final (Round 999)
+  if (currentMatch.next_match_id) {
+    const { data: nextMatchData } = await supabase
+      .from("matches")
+      .select("round_number")
+      .eq("id", currentMatch.next_match_id)
+      .single();
     
-    // Namun untuk WB Final (hanya 1 match), dia pasti ke LB Final (Match 1)
+    // Jika next match adalah Round 999 (Grand Final), berarti match ini adalah UB Final.
+    // Rumus standar akan meleset 1 angka (terlalu dalam), jadi kita koreksi (+1).
+    if (nextMatchData && nextMatchData.round_number === 999) {
+       targetLBRound += 1; 
+    }
+  }
+
+  // --- 2. TENTUKAN TARGET MATCH NUMBER ---
+  let targetMatchNum = 0;
+  
+  if (wbRound === 1) {
+    // WB Round 1: Ganjil masuk A, Genap masuk B di 1 match LB.
+    targetMatchNum = Math.ceil(currentMatch.match_number / 2);
+  } else {
+    // WB Round 2+: Drop lurus
+    targetMatchNum = Math.ceil(currentMatch.match_number / 2); // Mapping match number
+    
+    // Khusus WB Final (Match 1), pasti ke LB Final (Match 1)
     if (currentMatch.match_number === 1) {
        targetMatchNum = 1;
     }
-    
-    targetSlot = "participant_a_id"; // Default: Loser WB "Menunggu" di atas (Slot A)
   }
 
-  // 3. Cari Match Tujuan di Database
+  // --- 3. CARI MATCH TUJUAN ---
   const { data: targetMatch } = await supabase
     .from("matches")
     .select("id, participant_a_id, participant_b_id")
@@ -53,25 +61,39 @@ export async function dropToLowerBracket(
     .eq("match_number", targetMatchNum)
     .single();
 
-  // 4. Update Slot
   if (targetMatch) {
-    // Cek apakah slot sudah terisi (safety check)
-    // Jika targetSlot sudah ada isinya, jangan timpa (kecuali kita mau force update)
-    const canUpdate = targetSlot === "participant_a_id" 
-      ? !targetMatch.participant_a_id || targetMatch.participant_a_id === loserId
-      : !targetMatch.participant_b_id || targetMatch.participant_b_id === loserId;
-
-    if (canUpdate) {
-        const { error } = await supabase
-        .from("matches")
-        .update({ [targetSlot]: loserId })
-        .eq("id", targetMatch.id);
-
-        if (error)
-        throw new Error(
-            `Gagal memindahkan loser ke Lower Bracket (Round ${targetLBRound}): ${error.message}`
-        );
+    // --- FIX 2: LOGIKA SLOT PINTAR (SMART SLOTTING) ---
+    // Default logika kamu sebelumnya: Selalu masuk Slot A.
+    // Masalah: Jika Slot A sudah diisi oleh Pemenang LB sebelumnya, update gagal.
+    
+    let targetSlot = "participant_a_id";
+    
+    // Logika untuk Round 1 (WB R1 -> LB R1) tetap sama (Ganjil/Genap)
+    if (wbRound === 1) {
+       targetSlot = currentMatch.match_number % 2 !== 0 ? "participant_a_id" : "participant_b_id";
+    } else {
+       // Untuk Round lanjut (Drop Rounds), kita cek ketersediaan slot.
+       // Prioritas ke Slot A. Jika A sudah terisi orang lain, masuk ke Slot B.
+       if (targetMatch.participant_a_id && targetMatch.participant_a_id !== loserId) {
+           targetSlot = "participant_b_id";
+       } else {
+           targetSlot = "participant_a_id";
+       }
     }
+
+    // Eksekusi Update
+    const { error } = await supabase
+      .from("matches")
+      .update({ [targetSlot]: loserId })
+      .eq("id", targetMatch.id);
+
+    if (error) {
+      throw new Error(
+        `Gagal memindahkan loser ke Lower Bracket (Round ${targetLBRound}): ${error.message}`
+      );
+    }
+  } else {
+    console.error(`Target Match tidak ditemukan: Round ${targetLBRound}, Match ${targetMatchNum}`);
   }
 }
 
