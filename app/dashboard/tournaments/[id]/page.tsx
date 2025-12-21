@@ -118,7 +118,7 @@ export default async function TournamentOverviewPage({ params }: { params: Promi
             </div>
             <div>
               <p className="text-xs text-slate-400 font-medium uppercase tracking-wider">Format</p>
-              <p className="text-lg font-bold text-white mt-1 truncate max-w-[150px]" title={tournament.format_type}>
+              <p className="text-lg font-bold text-white mt-1 truncate max-w-37.5" title={tournament.format_type}>
                 {tournament.format_type.replace(/_/g, ' ')}
               </p>
             </div>
