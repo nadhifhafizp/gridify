@@ -4,7 +4,7 @@ import { Match } from "@/types/database";
 
 /**
  * Menjatuhkan Loser ke Lower Bracket dengan Logika Double Elimination Standard.
- * Rumus: Loser dari WB Round N jatuh ke LB Round (N * 2) - 1.
+ * Rumus Umum: Loser dari WB Round N jatuh ke LB Round (N * 2) - 1.
  */
 export async function dropToLowerBracket(
   supabase: SupabaseClient,
@@ -133,6 +133,7 @@ export async function advanceParticipant(
   currentMatch: Match,
   participantId: string
 ) {
+  // Jika tidak ada next match (misal: ini sudah Grand Final dan juara sudah ditentukan), berhenti.
   if (!currentMatch.next_match_id) return;
 
   // Ambil data next match untuk tahu dia Round berapa (Penting untuk Grand Final)
