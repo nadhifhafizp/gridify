@@ -11,10 +11,7 @@ export default function BracketVisualizer({
   matches: MatchWithParticipants[];
   isReadOnly?: boolean;
 }) {
-  // Filter Match berdasarkan Bracket Type
-  // Round > 0: Upper Bracket / Single Elim
-  // Round < 0: Lower Bracket
-  // Round 999: Grand Final
+  // Filter Match
   const upperBracket = matches.filter(
     (m) => m.round_number > 0 && m.round_number < 999
   );
@@ -23,7 +20,7 @@ export default function BracketVisualizer({
 
   const hasLowerBracket = lowerBracket.length > 0;
 
-  // Helper untuk mengelompokkan match berdasarkan round
+  // Helper Group Rounds
   const groupRounds = (matchList: MatchWithParticipants[]) => {
     const rounds = matchList.reduce<Record<number, MatchWithParticipants[]>>(
       (acc, match) => {
@@ -43,13 +40,11 @@ export default function BracketVisualizer({
   const ubRounds = groupRounds(upperBracket);
   const lbRounds = groupRounds(lowerBracket);
 
-  // Logic menentukan Champion
+  // Logic Champion
   let finalMatch: MatchWithParticipants | null = null;
-
   if (grandFinal.length > 0) {
     finalMatch = grandFinal[0];
   } else if (ubRounds.length > 0) {
-    // Fallback untuk Single Elim biasa (Round terakhir adalah final)
     const lastRound = ubRounds[ubRounds.length - 1];
     if (lastRound && lastRound.length === 1) {
       finalMatch = lastRound[0];
@@ -63,100 +58,135 @@ export default function BracketVisualizer({
       : finalMatch?.participant_b?.name
     : null;
 
+  // Helper untuk menentukan tipe connector (Top/Bottom pair)
+  const getConnectorType = (matchIndex: number, isFinalRound: boolean) => {
+    if (isFinalRound) return "straight";
+    return matchIndex % 2 === 0 ? "top" : "bottom";
+  };
+
   return (
-    <div className="w-full overflow-x-auto pb-12 pt-4 custom-scrollbar flex flex-col gap-12">
+    // FIXED: min-h-[500px] -> min-h-125
+    <div className="w-full overflow-x-auto pb-12 pt-8 custom-scrollbar flex flex-col gap-16 bg-slate-950 min-h-125">
       {/* UPPER BRACKET */}
       <div>
         {hasLowerBracket && (
-          <h3 className="text-indigo-400 font-bold mb-4 sticky left-0 px-4">
+          <h3 className="text-indigo-400 font-bold mb-6 sticky left-0 px-8 bg-slate-950/90 backdrop-blur-sm w-fit rounded-r-lg">
             Upper Bracket
           </h3>
         )}
 
-        <div className="flex gap-12 min-w-max px-4 items-center">
-          {ubRounds.map((roundMatches, idx) => (
-            <div
-              key={idx}
-              className="flex flex-col justify-around gap-8 self-stretch"
-            >
-              <div className="text-center mb-2">
-                <span className="text-xs text-slate-500 font-mono">
-                  Round {idx + 1}
-                </span>
-              </div>
-              <div className="flex flex-col justify-center gap-8 h-full">
+        <div className="flex gap-16 min-w-max px-8 items-stretch">
+          {ubRounds.map((roundMatches, roundIdx) => {
+             const isLastRound = roundIdx === ubRounds.length - 1;
+             
+             // Dynamic style untuk gap vertikal (Manual style diperlukan untuk kalkulasi pangkat)
+             const gapStyle = {
+                gap: `${Math.pow(2, roundIdx) * 2}rem`
+             };
+
+            return (
+              <div
+                key={roundIdx}
+                className="flex flex-col justify-center self-stretch relative"
+                style={gapStyle} 
+              >
+                <div className="absolute -top-10 left-0 right-0 text-center">
+                  <span className="text-xs text-slate-500 font-mono font-bold tracking-widest uppercase bg-slate-900 px-2 py-1 rounded">
+                    Round {roundIdx + 1}
+                  </span>
+                </div>
+                
                 {roundMatches
                   .sort((a, b) => a.match_number - b.match_number)
-                  .map((m) => (
-                    <MatchCard key={m.id} match={m} isReadOnly={isReadOnly} />
+                  .map((m, idx) => (
+                    <MatchCard
+                      key={m.id}
+                      match={m}
+                      isReadOnly={isReadOnly}
+                      connectorType={
+                        isLastRound && grandFinal.length === 0
+                          ? null
+                          : getConnectorType(idx, isLastRound)
+                      }
+                    />
                   ))}
               </div>
-            </div>
-          ))}
+            );
+          })}
 
+          {/* GRAND FINAL COLUMN */}
           {grandFinal.length > 0 && (
-            <div className="flex flex-col justify-center gap-8 self-stretch">
+            <div className="flex flex-col justify-center self-stretch gap-8 ml-8">
               <div className="text-center mb-2">
-                <span className="text-xs text-yellow-500 font-mono font-bold">
+                <span className="text-xs text-yellow-500 font-mono font-bold tracking-widest">
                   GRAND FINAL
                 </span>
               </div>
               {grandFinal.map((m) => (
-                <MatchCard key={m.id} match={m} isReadOnly={isReadOnly} />
+                <div key={m.id} className="flex items-center">
+                   {/* Garis Masuk ke Grand Final */}
+                   {/* FIXED: h-[2px] -> h-0.5, mr-[-1px] -> -mr-px */}
+                   <div className="w-8 h-0.5 bg-slate-500 -mr-px"></div>
+                   <MatchCard key={m.id} match={m} isReadOnly={isReadOnly} connectorType={null} />
+                </div>
               ))}
             </div>
           )}
 
-          {/* CHAMPION CARD */}
+          {/* CHAMPION DISPLAY */}
           {finalMatch?.status === "COMPLETED" && championName && (
-            <div className="flex items-center animate-in fade-in slide-in-from-left-8 duration-700">
-              <div className="h-0.5 w-12 bg-linear-to-r from-slate-700 to-yellow-500/50"></div>
-              <div className="relative p-6 rounded-2xl bg-linear-to-b from-yellow-500/20 to-amber-600/10 border border-yellow-500/50 text-center shadow-[0_0_40px_rgba(234,179,8,0.2)] ml-2">
-                <div className="absolute -top-8 left-1/2 -translate-x-1/2 bg-slate-900 p-3 rounded-full border border-yellow-500/50 shadow-lg shadow-yellow-500/20">
-                  <Trophy
-                    size={32}
-                    className="text-yellow-400 drop-shadow-[0_0_10px_rgba(234,179,8,0.8)]"
-                  />
+             <div className="flex flex-col justify-center ml-4">
+                <div className="flex items-center animate-in fade-in slide-in-from-left-8 duration-700 delay-200">
+                  {/* FIXED: h-[2px] -> h-0.5, bg-gradient-to-r -> bg-linear-to-r */}
+                  <div className="h-0.5 w-16 bg-linear-to-r from-slate-500 to-yellow-500/50"></div>
+                  
+                  {/* FIXED: bg-gradient-to-b -> bg-linear-to-b, ml-[-2px] -> -ml-0.5 */}
+                  <div className="relative p-6 rounded-2xl bg-linear-to-b from-slate-900 to-slate-900/50 border border-yellow-500/30 text-center shadow-[0_0_50px_rgba(234,179,8,0.15)] -ml-0.5">
+                    <div className="absolute -top-6 left-1/2 -translate-x-1/2 bg-slate-950 p-2 rounded-full border border-yellow-500/30 shadow-lg shadow-yellow-900/20">
+                      <Trophy
+                        size={28}
+                        className="text-yellow-400 drop-shadow-[0_0_12px_rgba(234,179,8,0.6)]"
+                      />
+                    </div>
+                    {/* FIXED: min-w-[140px] -> min-w-35 */}
+                    <div className="mt-4 min-w-35">
+                      <span className="text-[10px] font-bold text-yellow-600 tracking-[0.3em] uppercase block mb-1">
+                        WINNER
+                      </span>
+                      {/* FIXED: bg-gradient-to-r -> bg-linear-to-r */}
+                      <h1 className="text-xl font-black whitespace-nowrap bg-linear-to-r from-yellow-200 via-yellow-400 to-yellow-200 bg-clip-text text-transparent">
+                        {championName}
+                      </h1>
+                    </div>
+                  </div>
                 </div>
-                <div className="mt-4 min-w-[120px]">
-                  <span className="text-[10px] font-bold text-yellow-500 tracking-[0.2em] uppercase block mb-1">
-                    CHAMPION
-                  </span>
-                  <h1 className="text-2xl font-black whitespace-nowrap bg-linear-to-r from-white via-yellow-200 to-white bg-clip-text text-transparent">
-                    {championName}
-                  </h1>
-                </div>
-                <div className="absolute inset-0 bg-yellow-400/5 blur-xl rounded-2xl -z-10 animate-pulse"></div>
-              </div>
-            </div>
+             </div>
           )}
         </div>
       </div>
 
       {/* LOWER BRACKET */}
       {hasLowerBracket && (
-        <div className="border-t border-slate-800 pt-8">
-          <h3 className="text-red-400 font-bold mb-4 sticky left-0 px-4">
+        <div className="border-t border-slate-800/50 pt-12 mt-8">
+          <h3 className="text-red-400 font-bold mb-6 sticky left-0 px-8 bg-slate-950/90 backdrop-blur-sm w-fit rounded-r-lg">
             Lower Bracket
           </h3>
-          <div className="flex gap-12 min-w-max px-4">
-            {lbRounds.map((roundMatches, idx) => (
+          <div className="flex gap-16 min-w-max px-8">
+            {lbRounds.map((roundMatches, roundIdx) => (
               <div
-                key={idx}
-                className="flex flex-col justify-around gap-8 self-stretch"
+                key={roundIdx}
+                className="flex flex-col justify-center gap-8 self-stretch relative"
               >
-                <div className="text-center mb-2">
-                  <span className="text-xs text-slate-500 font-mono">
-                    LB Round {idx + 1}
+                 <div className="text-center mb-6">
+                  <span className="text-xs text-slate-600 font-mono font-bold">
+                    LB Round {roundIdx + 1}
                   </span>
                 </div>
-                <div className="flex flex-col justify-center gap-8 h-full">
-                  {roundMatches
-                    .sort((a, b) => a.match_number - b.match_number)
-                    .map((m) => (
-                      <MatchCard key={m.id} match={m} isReadOnly={isReadOnly} />
-                    ))}
-                </div>
+                {roundMatches
+                  .sort((a, b) => a.match_number - b.match_number)
+                  .map((m) => (
+                    <MatchCard key={m.id} match={m} isReadOnly={isReadOnly} connectorType="straight" />
+                  ))}
               </div>
             ))}
           </div>
