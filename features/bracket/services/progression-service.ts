@@ -1,10 +1,9 @@
-// features/bracket/services/progression-service.ts
 import { SupabaseClient } from "@supabase/supabase-js";
 import { Match } from "@/types/database";
 
 /**
  * Menjatuhkan Loser ke Lower Bracket dengan Logika Double Elimination Standard.
- * Rumus Umum: Loser dari WB Round N jatuh ke LB Round (N * 2) - 1.
+ * (VERSI FIXED: Menangani 4 Tim / Short Bracket dengan benar)
  */
 export async function dropToLowerBracket(
   supabase: SupabaseClient,
@@ -16,12 +15,12 @@ export async function dropToLowerBracket(
   // Safety: Jangan jalankan jika ini match LB (negatif) atau Grand Final (999)
   if (wbRound < 0 || wbRound === 999) return;
 
-  // --- FIX 1: TENTUKAN TARGET ROUND YANG BENAR ---
+  // --- 1. TENTUKAN TARGET ROUND YANG BENAR ---
   // Rumus default: WB R1 -> LB R1 | WB R2 -> LB R3
   let targetLBRound = -((wbRound * 2) - 1);
 
-  // Cek apakah ini Upper Bracket Final?
-  // Caranya: Cek apakah match selanjutnya adalah Grand Final (Round 999)
+  // LOGIC FIX: Cek apakah ini Upper Bracket Final?
+  // Jika next match adalah Round 999 (Grand Final), berarti match ini adalah UB Final.
   if (currentMatch.next_match_id) {
     const { data: nextMatchData } = await supabase
       .from("matches")
@@ -29,8 +28,8 @@ export async function dropToLowerBracket(
       .eq("id", currentMatch.next_match_id)
       .single();
     
-    // Jika next match adalah Round 999 (Grand Final), berarti match ini adalah UB Final.
-    // Rumus standar akan meleset 1 angka (terlalu dalam), jadi kita koreksi (+1).
+    // Koreksi rumus untuk UB Final: Kurangi kedalaman round agar pas ke LB Final
+    // Contoh: 4 Tim. WB Final R2. Rumus: -3. Target asli: -2 (LB Final). Jadi -3 + 1 = -2.
     if (nextMatchData && nextMatchData.round_number === 999) {
        targetLBRound += 1; 
     }
@@ -44,7 +43,7 @@ export async function dropToLowerBracket(
     targetMatchNum = Math.ceil(currentMatch.match_number / 2);
   } else {
     // WB Round 2+: Drop lurus
-    targetMatchNum = Math.ceil(currentMatch.match_number / 2); // Mapping match number
+    targetMatchNum = Math.ceil(currentMatch.match_number / 2); 
     
     // Khusus WB Final (Match 1), pasti ke LB Final (Match 1)
     if (currentMatch.match_number === 1) {
@@ -62,9 +61,8 @@ export async function dropToLowerBracket(
     .single();
 
   if (targetMatch) {
-    // --- FIX 2: LOGIKA SLOT PINTAR (SMART SLOTTING) ---
-    // Default logika kamu sebelumnya: Selalu masuk Slot A.
-    // Masalah: Jika Slot A sudah diisi oleh Pemenang LB sebelumnya, update gagal.
+    // --- 4. LOGIKA SLOT PINTAR (SMART SLOTTING) ---
+    // Mencegah error jika slot A sudah diisi oleh pemenang LB sebelumnya.
     
     let targetSlot = "participant_a_id";
     
@@ -72,8 +70,8 @@ export async function dropToLowerBracket(
     if (wbRound === 1) {
        targetSlot = currentMatch.match_number % 2 !== 0 ? "participant_a_id" : "participant_b_id";
     } else {
-       // Untuk Round lanjut (Drop Rounds), kita cek ketersediaan slot.
-       // Prioritas ke Slot A. Jika A sudah terisi orang lain, masuk ke Slot B.
+       // Untuk Round lanjut, cek ketersediaan slot.
+       // Prioritas ke Slot A. Jika A sudah terisi orang lain (bukan kita), masuk ke Slot B.
        if (targetMatch.participant_a_id && targetMatch.participant_a_id !== loserId) {
            targetSlot = "participant_b_id";
        } else {
@@ -89,17 +87,15 @@ export async function dropToLowerBracket(
 
     if (error) {
       throw new Error(
-        `Gagal memindahkan loser ke Lower Bracket (Round ${targetLBRound}): ${error.message}`
+        `Gagal memindahkan loser ke Lower Bracket: ${error.message}`
       );
     }
-  } else {
-    console.error(`Target Match tidak ditemukan: Round ${targetLBRound}, Match ${targetMatchNum}`);
   }
 }
 
 /**
  * Khusus Single Elimination: Menangani perebutan juara 3 (Bronze Match).
- * Tidak digunakan di Double Elimination murni.
+ * (FITUR INI TETAP ADA)
  */
 export async function handleSemiFinalLoser(
   supabase: SupabaseClient,
@@ -149,6 +145,7 @@ export async function handleSemiFinalLoser(
 /**
  * Memindahkan pemenang ke match selanjutnya (Advance).
  * Handle logika Grand Final Slot A/B.
+ * (FITUR INI TETAP ADA)
  */
 export async function advanceParticipant(
   supabase: SupabaseClient,
@@ -186,7 +183,7 @@ export async function advanceParticipant(
       const isOdd = currentMatch.match_number % 2 !== 0;
       targetCol = isOdd ? "participant_a_id" : "participant_b_id";
 
-      // Special Logic Lower Bracket:
+      // Special Logic Lower Bracket Advance:
       // Di LB, perpindahan dari Round Genap ke Ganjil (Advance) biasanya masuk ke Slot B,
       // Karena Slot A sudah menunggu 'Drop' dari Upper Bracket.
       if (currentMatch.round_number < 0) {
@@ -216,6 +213,7 @@ export async function advanceParticipant(
 
 /**
  * Cek apakah turnamen/stage sudah selesai sepenuhnya.
+ * (FITUR INI TETAP ADA)
  */
 export async function checkAndCompleteStage(
   supabase: SupabaseClient,

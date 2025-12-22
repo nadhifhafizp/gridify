@@ -2,6 +2,8 @@
 
 import { createClient } from "@/lib/supabase/server";
 import { revalidatePath } from "next/cache";
+// PENTING: Import generator Double Elimination
+import { generateDoubleElimination } from "../generators/double-elimination";
 
 // Tipe data untuk statistik tim di klasemen
 type TeamStats = {
@@ -61,7 +63,6 @@ export async function advanceToKnockoutAction(tournamentId: string) {
 
   const pMap: Record<string, { name: string; group: string }> = {};
   participants?.forEach((p) => {
-    // Default group name 'League' jika null
     pMap[p.id] = { name: p.name, group: p.group_name || "League" };
   });
 
@@ -107,7 +108,8 @@ export async function advanceToKnockoutAction(tournamentId: string) {
     groups[s.group].push(s);
   });
 
-  const qualifiers: { id: string; group: string; rank: number }[] = [];
+  // FIX 1: Tambahkan 'name' ke tipe data qualifiers agar bisa dibaca nanti
+  const qualifiers: { id: string; name: string; group: string; rank: number }[] = [];
 
   // Loop setiap grup untuk mencari juara & runner up
   Object.keys(groups).forEach((gName) => {
@@ -130,11 +132,11 @@ export async function advanceToKnockoutAction(tournamentId: string) {
   }
 
   // 6. Generate Bracket Knockout (Stage 2)
-  // Bersihkan match lama di stage target (Clean Slate)
+  // Bersihkan match lama di stage target (Clean Slate) agar tidak duplikat
   await supabase.from("matches").delete().eq("stage_id", nextStage.id);
 
   try {
-    // SKENARIO 1: SINGLE ELIMINATION (Standard UCL Knockout)
+    // SKENARIO 1: SINGLE ELIMINATION (Fitur Lama Tetap Ada)
     if (nextStage.type === "SINGLE_ELIMINATION") {
       const rank1Teams = qualifiers.filter((q) => q.rank === 1);
       const rank2Teams = qualifiers.filter((q) => q.rank === 2);
@@ -142,21 +144,15 @@ export async function advanceToKnockoutAction(tournamentId: string) {
       // Ambil jumlah match berdasarkan pasangan terkecil
       const matchCount = Math.min(rank1Teams.length, rank2Teams.length);
 
-      // Buat Round 1 Knockout (Misal: Semifinal atau Quarter Final)
-      // Kita lakukan pairing manual di sini agar Juara Grup vs Runner Up Grup Lain
+      // Pairing Manual: Juara Grup vs Runner Up Grup Lain
       for (let i = 0; i < matchCount; i++) {
         const teamA = rank1Teams[i];
-
-        // Cari lawan: Runner Up dari grup yang BERBEDA
-        // Jika tidak ada, terpaksa ambil yang index sama
         const teamB =
           rank2Teams.find((t) => t.group !== teamA.group) || rank2Teams[i];
 
-        // Hapus teamB dari pool agar tidak dipilih dua kali
         const bIndex = rank2Teams.indexOf(teamB);
         if (bIndex > -1) rank2Teams.splice(bIndex, 1);
 
-        // Insert Match
         await supabase.from("matches").insert({
           tournament_id: tournamentId,
           stage_id: nextStage.id,
@@ -168,35 +164,53 @@ export async function advanceToKnockoutAction(tournamentId: string) {
           scores: { a: 0, b: 0 },
         });
       }
-
-      // Note: Untuk membuat full tree bracket sampai final, idealnya kita memanggil
-      // generator 'generateSingleElimination' dengan input 'qualifiers' sebagai peserta.
-      // Namun untuk MVP Hybrid, pairing manual 1 ronde ini sudah cukup fungsional.
     }
 
-    // SKENARIO 2: DOUBLE ELIMINATION (Playoff MPL)
+    // SKENARIO 2: DOUBLE ELIMINATION (YANG DIPERBAIKI)
     else if (nextStage.type === "DOUBLE_ELIMINATION") {
-      // Logic serupa, masukkan qualifiers ke Upper Bracket Round 1
-      // Implementasi disederhanakan untuk MVP: Pair Rank 1 vs Rank 2
-      for (let i = 0; i < qualifiers.length / 2; i++) {
-        const p1 = qualifiers[i * 2];
-        const p2 = qualifiers[i * 2 + 1];
+      
+      // A. SIAPKAN URUTAN PESERTA (SEEDING)
+      // Logika: Juara Grup A vs Runner Up Grup B (Cross Seeding)
+      const rank1 = qualifiers.filter(q => q.rank === 1);
+      const rank2 = qualifiers.filter(q => q.rank === 2);
+      
+      // FIX 2: Definisi tipe data eksplisit agar TypeScript tidak error (any[])
+      const seededParticipants: { id: string; name: string }[] = [];
 
-        if (p1 && p2) {
-          await supabase.from("matches").insert({
-            tournament_id: tournamentId,
-            stage_id: nextStage.id,
-            round_number: 1, // Upper Bracket R1
-            match_number: i + 1,
-            participant_a_id: p1.id,
-            participant_b_id: p2.id,
-            status: "SCHEDULED",
-            scores: { a: 0, b: 0 },
-          });
+      for (let i = 0; i < rank1.length; i++) {
+        const team1 = rank1[i];
+        // Cari lawan Runner Up dari grup yang BERBEDA
+        let team2 = rank2.find(t => t.group !== team1.group);
+        
+        // Fallback: Jika tidak ketemu (misal grup cuma 1), ambil sembarang runner up
+        if (!team2) {
+             // Pastikan team2 belum masuk seededParticipants
+             team2 = rank2.find(t => !seededParticipants.some((p) => p.id === t.id));
+        }
+
+        // FIX 3: Masukkan 'name' ke dalam object (sebelumnya hanya id)
+        if (team1) seededParticipants.push({ id: team1.id, name: team1.name });
+        if (team2) seededParticipants.push({ id: team2.id, name: team2.name });
+        
+        // Tandai team2 sudah dipakai
+        if (team2) {
+            const idx = rank2.findIndex(r => r.id === team2?.id);
+            if (idx > -1) rank2.splice(idx, 1);
         }
       }
-      // Generate sisa struktur bracket kosong (LB & Finals) bisa ditambahkan di sini
-      // atau memanggil generator Double Elim
+
+      // Masukkan sisa tim (jika ada ganjil/sisa)
+      rank2.forEach(t => seededParticipants.push({ id: t.id, name: t.name }));
+
+      // B. PANGGIL GENERATOR UTAMA
+      // Ini bagian penting yang sebelumnya hilang. 
+      // Generator akan membuat Upper Bracket, Lower Bracket, dan Finals lengkap.
+      await generateDoubleElimination({
+        supabase,
+        tournamentId,
+        stageId: nextStage.id,
+        participants: seededParticipants, // Kirim peserta yang sudah diurutkan dengan nama
+      });
     }
   } catch (err: any) {
     return { success: false, error: err.message };
