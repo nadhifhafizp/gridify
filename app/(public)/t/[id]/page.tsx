@@ -33,10 +33,10 @@ export default async function PublicTournamentPage({
   const { stage: stageIdParam } = await searchParams;
   const supabase = await createClient();
 
-  // 1. Ambil Data Tournament (termasuk owner untuk keperluan internal jika butuh)
+// 1. Ambil Data Tournament (Hapus bagian owner/email)
   const { data: tournament } = await supabase
     .from("tournaments")
-    .select("*, owner:owner_id(email)") 
+    .select("*") 
     .eq("id", id)
     .single();
 
@@ -147,7 +147,7 @@ export default async function PublicTournamentPage({
         )}
 
         {/* BRACKET VIEW AREA */}
-        <div className="max-w-[1400px] mx-auto">
+        <div className="max-w-350 mx-auto">
           {!activeStage ? (
             <div className="text-center py-20 text-slate-500">
               <p>Belum ada stage yang dibuat.</p>
@@ -194,7 +194,7 @@ export default async function PublicTournamentPage({
               {/* 2. Elimination Bracket View */}
               {(activeStage.type === "SINGLE_ELIMINATION" ||
                 activeStage.type === "DOUBLE_ELIMINATION") && (
-                <div className="bg-slate-900/40 border border-white/5 rounded-3xl p-1 shadow-2xl overflow-hidden relative min-h-[600px]">
+                <div className="bg-slate-900/40 border border-white/5 rounded-3xl p-1 shadow-2xl overflow-hidden relative min-h-150">
                    {/* Scroll Hint */}
                    <div className="absolute top-6 right-6 z-20 pointer-events-none">
                     <span className="px-4 py-2 bg-black/60 backdrop-blur-md rounded-full text-xs font-medium text-slate-400 border border-white/10 flex items-center gap-2">
