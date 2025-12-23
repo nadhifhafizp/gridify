@@ -4,8 +4,10 @@ import { Dialog, Transition } from "@headlessui/react";
 import { Fragment, useState } from "react";
 import { MatchWithParticipants } from "../types";
 import { Participant } from "@/types/database";
+import { updateMatchDetails } from "../actions/match-actions"; // Import Server Action
+import { Loader2 } from "lucide-react";
+import { toast } from "sonner"; // Opsional: jika pakai sonner
 
-// 1. Definisikan Props (Termasuk allParticipants untuk validasi jika perlu)
 interface ScoreModalProps {
   isOpen: boolean;
   onClose: () => void;
@@ -20,38 +22,52 @@ export default function ScoreModal({
   allParticipants 
 }: ScoreModalProps) {
   
-  // --- STATE ---
-  // Kita set default value dari props match
   const [scoreA, setScoreA] = useState(match.scores?.a || 0);
   const [scoreB, setScoreB] = useState(match.scores?.b || 0);
   
-  // State untuk Nama Tim (Agar bisa diedit user)
+  // State untuk edit nama
   const [nameA, setNameA] = useState(match.participant_a?.name || "");
   const [nameB, setNameB] = useState(match.participant_b?.name || "");
 
+  const [isLoading, setIsLoading] = useState(false);
+
   const handleSave = async () => {
-    // Siapkan data payload
-    const payload = {
-      matchId: match.id,
-      scores: { a: scoreA, b: scoreB },
-      // Kirim juga nama tim yang baru diedit (jika backend mendukung update nama via sini)
-      updatedNames: {
-        participant_a: { id: match.participant_a?.id, name: nameA },
-        participant_b: { id: match.participant_b?.id, name: nameB },
+    setIsLoading(true);
+    try {
+      // Siapkan data peserta yang diedit namanya
+      const participantsToUpdate = [];
+      if (match.participant_a?.id) {
+        participantsToUpdate.push({ id: match.participant_a.id, name: nameA });
       }
-    };
-    
-    console.log("Saving changes...", payload);
+      if (match.participant_b?.id) {
+        participantsToUpdate.push({ id: match.participant_b.id, name: nameB });
+      }
 
-    // TODO: Panggil Server Action / API untuk update database disini
-    // await updateMatchData(payload);
+      // Panggil Server Action
+      const result = await updateMatchDetails(
+        match.id,
+        { a: scoreA, b: scoreB },
+        participantsToUpdate,
+        match.tournament_id // Kirim ID turnamen untuk revalidate path
+      );
 
-    onClose();
+      if (result.success) {
+        toast.success("Match updated successfully");
+        onClose(); 
+      } else {
+        toast.error("Gagal mengupdate match: " + result.error);
+      }
+    } catch (error) {
+      console.error(error);
+      toast.error("Terjadi kesalahan sistem.");
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   return (
     <Transition appear show={isOpen} as={Fragment}>
-      <Dialog as="div" className="relative z-50" onClose={onClose}>
+      <Dialog as="div" className="relative z-50" onClose={() => !isLoading && onClose()}>
         <Transition.Child
           as={Fragment}
           enter="ease-out duration-300"
@@ -81,80 +97,81 @@ export default function ScoreModal({
                 </Dialog.Title>
 
                 <div className="space-y-6">
-                  
-                  {/* --- INPUT TEAM A --- */}
+                  {/* --- TEAM A INPUT --- */}
                   <div className="space-y-2">
                     <label className="text-xs text-slate-400 font-bold uppercase tracking-wider block">
                       Team A (Top)
                     </label>
                     <div className="flex gap-4">
-                      {/* Input Nama (Bisa Diedit) */}
                       <input
                         type="text"
                         value={nameA}
                         onChange={(e) => setNameA(e.target.value)}
-                        className="flex-1 bg-slate-800 border border-slate-600 rounded px-3 py-2 text-white focus:ring-2 focus:ring-indigo-500 outline-none text-sm placeholder-slate-500"
+                        disabled={isLoading}
+                        className="flex-1 bg-slate-800 border border-slate-600 rounded px-3 py-2 text-white focus:ring-2 focus:ring-indigo-500 outline-none text-sm placeholder-slate-500 disabled:opacity-50"
                         placeholder="Nama Tim A"
                       />
-                      {/* Input Skor */}
                       <input
                         type="number"
                         min="0"
                         value={scoreA}
                         onChange={(e) => setScoreA(parseInt(e.target.value) || 0)}
-                        className="w-20 bg-slate-800 border border-slate-600 rounded px-3 py-2 text-white text-center font-mono focus:ring-2 focus:ring-indigo-500 outline-none"
+                        disabled={isLoading}
+                        className="w-20 bg-slate-800 border border-slate-600 rounded px-3 py-2 text-white text-center font-mono focus:ring-2 focus:ring-indigo-500 outline-none disabled:opacity-50"
                       />
                     </div>
                   </div>
 
-                  {/* VS Divider Visual */}
+                  {/* VS DIVIDER */}
                   <div className="flex items-center gap-4">
                     <div className="h-px bg-slate-700 flex-1"></div>
                     <span className="text-slate-500 text-xs font-bold">VS</span>
                     <div className="h-px bg-slate-700 flex-1"></div>
                   </div>
 
-                  {/* --- INPUT TEAM B --- */}
+                  {/* --- TEAM B INPUT --- */}
                   <div className="space-y-2">
                     <label className="text-xs text-slate-400 font-bold uppercase tracking-wider block">
                       Team B (Bottom)
                     </label>
                     <div className="flex gap-4">
-                      {/* Input Nama (Bisa Diedit) */}
                       <input
                         type="text"
                         value={nameB}
                         onChange={(e) => setNameB(e.target.value)}
-                        className="flex-1 bg-slate-800 border border-slate-600 rounded px-3 py-2 text-white focus:ring-2 focus:ring-indigo-500 outline-none text-sm placeholder-slate-500"
+                        disabled={isLoading}
+                        className="flex-1 bg-slate-800 border border-slate-600 rounded px-3 py-2 text-white focus:ring-2 focus:ring-indigo-500 outline-none text-sm placeholder-slate-500 disabled:opacity-50"
                         placeholder="Nama Tim B"
                       />
-                      {/* Input Skor */}
                       <input
                         type="number"
                         min="0"
                         value={scoreB}
                         onChange={(e) => setScoreB(parseInt(e.target.value) || 0)}
-                        className="w-20 bg-slate-800 border border-slate-600 rounded px-3 py-2 text-white text-center font-mono focus:ring-2 focus:ring-indigo-500 outline-none"
+                        disabled={isLoading}
+                        className="w-20 bg-slate-800 border border-slate-600 rounded px-3 py-2 text-white text-center font-mono focus:ring-2 focus:ring-indigo-500 outline-none disabled:opacity-50"
                       />
                     </div>
                   </div>
-
                 </div>
 
                 <div className="mt-8 flex justify-end gap-2">
                   <button
                     type="button"
-                    className="inline-flex justify-center rounded-md border border-transparent bg-slate-700 px-4 py-2 text-sm font-medium text-slate-200 hover:bg-slate-600 focus:outline-none"
+                    className="inline-flex justify-center rounded-md border border-transparent bg-slate-700 px-4 py-2 text-sm font-medium text-slate-200 hover:bg-slate-600 focus:outline-none disabled:opacity-50"
                     onClick={onClose}
+                    disabled={isLoading}
                   >
                     Cancel
                   </button>
                   <button
                     type="button"
                     onClick={handleSave}
-                    className="inline-flex justify-center rounded-md border border-transparent bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700 focus:outline-none"
+                    disabled={isLoading}
+                    className="inline-flex justify-center items-center gap-2 rounded-md border border-transparent bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700 focus:outline-none disabled:bg-indigo-800"
                   >
-                    Save Changes
+                    {isLoading && <Loader2 size={14} className="animate-spin" />}
+                    {isLoading ? "Saving..." : "Save Changes"}
                   </button>
                 </div>
               </Dialog.Panel>
