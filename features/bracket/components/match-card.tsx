@@ -4,6 +4,7 @@ import { useState } from "react";
 import { Edit2 } from "lucide-react";
 import ScoreModal from "./score-modal";
 import { MatchWithParticipants } from "../types";
+import { Participant } from "@/types/database";
 
 // --- Connector Component (Updated for Esports Layout) ---
 const BracketConnector = ({ type }: { type: "top" | "bottom" | "straight" | "ub-final" | "lb-final" | null }) => {
@@ -50,10 +51,12 @@ const BracketConnector = ({ type }: { type: "top" | "bottom" | "straight" | "ub-
 
 export default function MatchCard({
   match,
+  allParticipants, // --- UPDATE PROPS
   isReadOnly = false,
   connectorType = null,
 }: {
   match: MatchWithParticipants;
+  allParticipants: Participant[]; // --- UPDATE TYPE
   isReadOnly?: boolean;
   connectorType?: "top" | "bottom" | "straight" | "ub-final" | "lb-final" | null;
 }) {
@@ -64,8 +67,8 @@ export default function MatchCard({
   const score = match.scores || { a: 0, b: 0 };
   const winnerId = match.winner_id;
 
-  const isReady = !!p1 && !!p2;
-  const canEdit = isReady && !isReadOnly;
+  // Logic: Bisa edit kalau tidak ReadOnly (Bahkan jika belum ready, admin mungkin mau set tim manual)
+  const canEdit = !isReadOnly;
 
   return (
     <>
@@ -169,6 +172,7 @@ export default function MatchCard({
       {canEdit && (
         <ScoreModal
           match={match}
+          allParticipants={allParticipants} // --- UPDATE PASSING PROP
           isOpen={isModalOpen}
           onClose={() => setIsModalOpen(false)}
         />

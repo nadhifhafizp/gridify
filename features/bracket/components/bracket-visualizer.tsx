@@ -3,12 +3,16 @@
 import MatchCard from "./match-card";
 import { Trophy } from "lucide-react";
 import { MatchWithParticipants } from "../types";
+import { Participant } from "@/types/database";
 
+// --- UPDATE PROPS INTERFACE ---
 export default function BracketVisualizer({
   matches,
+  allParticipants, // Terima data peserta
   isReadOnly = false,
 }: {
   matches: MatchWithParticipants[];
+  allParticipants: Participant[]; // Type definition
   isReadOnly?: boolean;
 }) {
   // --- 1. Separasi Data Bracket ---
@@ -72,7 +76,6 @@ export default function BracketVisualizer({
   };
 
   return (
-    // FIXED: min-h-[600px] -> min-h-150
     <div className="w-full overflow-x-auto pb-12 pt-8 px-4 custom-scrollbar bg-slate-950 min-h-150 flex items-center">
       {/* WRAPPER UTAMA */}
       <div className="flex gap-20">
@@ -91,7 +94,6 @@ export default function BracketVisualizer({
                   const isLastUbRound = roundIdx === ubRounds.length - 1;
                   const roundLabel = getRoundLabel(roundIdx, ubRounds.length, "UB");
                   
-                  // Dynamic Gap
                   const gapStyle = { gap: `${Math.pow(2, roundIdx) * 1.5}rem` };
 
                   return (
@@ -112,6 +114,7 @@ export default function BracketVisualizer({
                           <MatchCard
                             key={m.id}
                             match={m}
+                            allParticipants={allParticipants} // --- UPDATE PASSING PROP
                             isReadOnly={isReadOnly}
                             connectorType={isLastUbRound ? "ub-final" : getConnectorType(idx)}
                           />
@@ -151,6 +154,7 @@ export default function BracketVisualizer({
                             <MatchCard
                               key={m.id}
                               match={m}
+                              allParticipants={allParticipants} // --- UPDATE PASSING PROP
                               isReadOnly={isReadOnly}
                               connectorType={isLastLbRound ? "lb-final" : "straight"}
                             />
@@ -177,7 +181,13 @@ export default function BracketVisualizer({
                  </div>
                  
                  {grandFinal.map(m => (
-                    <MatchCard key={m.id} match={m} isReadOnly={isReadOnly} connectorType={null} />
+                    <MatchCard 
+                        key={m.id} 
+                        match={m} 
+                        allParticipants={allParticipants} // --- UPDATE PASSING PROP
+                        isReadOnly={isReadOnly} 
+                        connectorType={null} 
+                    />
                  ))}
 
                  {/* CHAMPION DISPLAY */}

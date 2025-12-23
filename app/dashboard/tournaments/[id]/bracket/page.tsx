@@ -34,12 +34,11 @@ export default async function BracketPage({
     .eq("tournament_id", id)
     .order("sequence_order", { ascending: true });
 
-  // Tentukan Stage Aktif
   const activeStage = stageIdParam
     ? stages?.find((s) => s.id === stageIdParam)
     : stages?.[0];
 
-  // Jika belum ada stage sama sekali
+  // Jika belum ada stage
   if (!stages || stages.length === 0) {
     const { count: participantCount } = await supabase
       .from("participants")
@@ -51,7 +50,7 @@ export default async function BracketPage({
     );
   }
 
-  // 2. Ambil Match sesuai Stage yang aktif
+  // 2. Ambil Match
   const { data: matches } = await supabase
     .from("matches")
     .select(
@@ -67,12 +66,11 @@ export default async function BracketPage({
     .select("*")
     .eq("tournament_id", id);
 
-  // Cek apakah bracket/jadwal SUDAH ADA?
   const hasBracket = matches && matches.length > 0;
 
   return (
     <div className="space-y-6 h-full flex flex-col">
-      {/* HEADER & STAGE SELECTOR */}
+      {/* HEADER SECTION */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
           <h2 className="text-2xl font-bold text-white flex items-center gap-3">
@@ -83,7 +81,6 @@ export default async function BracketPage({
             ) : (
               <GitGraph className="text-orange-400" />
             )}
-
             {activeStage?.type === "ROUND_ROBIN"
               ? "Klasemen Liga"
               : activeStage?.type === "LEADERBOARD"
@@ -98,7 +95,6 @@ export default async function BracketPage({
           </p>
         </div>
 
-        {/* TAB MENU (Jika Hybrid) */}
         {stages.length > 1 && (
           <div className="flex bg-slate-900 p-1 rounded-xl border border-white/10">
             {stages.map((s) => (
@@ -117,7 +113,6 @@ export default async function BracketPage({
           </div>
         )}
 
-        {/* Tombol Reset (HANYA MUNCUL JIKA BRACKET SUDAH ADA & Stage Pertama) */}
         {hasBracket && activeStage?.sequence_order === 1 && (
           <GenerateBracketButton
             tournamentId={id}
@@ -143,10 +138,7 @@ export default async function BracketPage({
                 {participants?.length || 0}
               </span>{" "}
               peserta siap.
-              <br />
-              Klik tombol di bawah untuk menyusun jadwal.
             </p>
-
             <GenerateBracketButton
               tournamentId={id}
               participantCount={participants?.length || 0}
@@ -155,7 +147,6 @@ export default async function BracketPage({
           </div>
         ) : (
           <>
-            {/* VIEW 1: LIGA (ROUND ROBIN) */}
             {activeStage?.type === "ROUND_ROBIN" && (
               <StandingsTable
                 matches={matches || []}
@@ -164,26 +155,28 @@ export default async function BracketPage({
               />
             )}
 
-            {/* VIEW 2: BRACKET (SINGLE/DOUBLE ELIM) */}
+            {/* --- UPDATE: PASS ALL PARTICIPANTS HERE --- */}
             {(activeStage?.type === "SINGLE_ELIMINATION" ||
               activeStage?.type === "DOUBLE_ELIMINATION") && (
-              <div className="bg-slate-900/30 border border-white/5 rounded-2xl p-6 overflow-hidden relative min-h-[400px]">
+              <div className="bg-slate-900/30 border border-white/5 rounded-2xl p-6 overflow-hidden relative min-h-96">
                 <div className="absolute top-4 right-4 z-10">
                   <span className="px-3 py-1 bg-black/40 backdrop-blur rounded-full text-xs text-slate-500 border border-white/5">
                     Geser Horizontal 👉
                   </span>
                 </div>
-                <BracketVisualizer matches={matches} />
+                <BracketVisualizer 
+                  matches={matches} 
+                  allParticipants={participants || []} 
+                />
               </div>
             )}
 
-            {/* VIEW 3: BATTLE ROYALE */}
             {activeStage?.type === "LEADERBOARD" && (
               <BattleRoyaleView
                 matches={matches || []}
                 participants={participants || []}
                 tournamentId={id}
-                isReadOnly={false} // True untuk public page
+                isReadOnly={false}
               />
             )}
           </>

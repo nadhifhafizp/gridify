@@ -2,8 +2,8 @@
 
 import { createClient } from "@/lib/supabase/server";
 import { revalidatePath } from "next/cache";
-import { Match, Stage, Tournament } from "@/types/database";
-import * as progressionService from "../services/progression-service";
+import { Match, Stage, Tournament } from "@/types/database"; //
+import * as progressionService from "../services/progression-service"; //
 
 // --- ACTION 1: Update Skor 1vs1 (Bracket/League) ---
 export async function updateMatchScoreAction(
@@ -117,7 +117,7 @@ export async function updateMatchScoreAction(
   return { success: true };
 }
 
-// ... (Action Battle Royale tetap sama)
+// --- ACTION 2: Update Skor Battle Royale ---
 export async function updateBRMatchScoreAction(
   matchId: string,
   results: { teamId: string; rank: number; kills: number; total: number }[],
@@ -149,5 +149,36 @@ export async function updateBRMatchScoreAction(
   if (error) return { success: false, error: error.message };
 
   revalidatePath(`/dashboard/tournaments/${tournamentId}/bracket`);
+  return { success: true };
+}
+
+// --- [BARU] ACTION 3: Update Peserta Match Manual (Fitur Edit Bracket) ---
+export async function updateMatchParticipantAction(
+  matchId: string,
+  slot: "a" | "b",
+  participantId: string | null,
+  tournamentId: string
+) {
+  const supabase = await createClient();
+
+  // Tentukan kolom mana yang mau diupdate
+  const columnToUpdate = slot === "a" ? "participant_a_id" : "participant_b_id";
+
+  const { error } = await supabase
+    .from("matches")
+    .update({
+      [columnToUpdate]: participantId, // Set ID peserta baru (atau null)
+    })
+    .eq("id", matchId);
+
+  if (error) {
+    console.error("Error updating participant:", error);
+    return { success: false, error: error.message };
+  }
+
+  // Revalidate agar UI bracket langsung berubah
+  revalidatePath(`/dashboard/tournaments/${tournamentId}`);
+  revalidatePath(`/dashboard/tournaments/${tournamentId}/bracket`);
+
   return { success: true };
 }

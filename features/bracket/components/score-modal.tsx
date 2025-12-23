@@ -5,17 +5,20 @@ import { X, Save, Loader2 } from "lucide-react";
 import { updateMatchScoreAction } from "@/features/bracket/actions/match-actions";
 import { MatchWithParticipants } from "../types";
 import { toast } from "sonner";
+import { Participant } from "@/types/database";
 
 type ScoreModalProps = {
   match: MatchWithParticipants;
   isOpen: boolean;
   onClose: () => void;
+  allParticipants: Participant[];
 };
 
 export default function ScoreModal({
   match,
   isOpen,
   onClose,
+  allParticipants
 }: ScoreModalProps) {
   const [scoreA, setScoreA] = useState(match.scores?.a || 0);
   const [scoreB, setScoreB] = useState(match.scores?.b || 0);
