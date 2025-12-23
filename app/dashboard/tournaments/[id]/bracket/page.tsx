@@ -1,18 +1,18 @@
+// File: app/dashboard/tournaments/[id]/bracket/page.tsx
+
 import { createClient } from "@/lib/supabase/server";
 import {
   Swords,
-  Trophy,
   LayoutList,
   GitGraph,
-  AlertCircle,
   Target,
 } from "lucide-react";
 import Link from "next/link";
 import GenerateBracketButton from "./generate-button";
 import BracketVisualizer from "@/features/bracket/components/bracket-visualizer";
 import StandingsTable from "@/features/bracket/components/standings-table";
-import BRLeaderboard from "@/features/bracket/components/br-leaderboard";
 import BattleRoyaleView from "@/features/bracket/components/br-view";
+import { Tournament } from "@/types/database"; // Import Type Tournament
 
 export const dynamic = "force-dynamic";
 
@@ -27,7 +27,14 @@ export default async function BracketPage({
   const { stage: stageIdParam } = await searchParams;
   const supabase = await createClient();
 
-  // 1. Ambil Semua Stage
+  // --- 1. Ambil Data Tournament (PERBAIKAN: Diperlukan untuk Visualizer) ---
+  const { data: tournament } = await supabase
+    .from("tournaments")
+    .select("*")
+    .eq("id", id)
+    .single();
+
+  // --- 2. Ambil Semua Stage ---
   const { data: stages } = await supabase
     .from("stages")
     .select("*")
@@ -38,8 +45,8 @@ export default async function BracketPage({
     ? stages?.find((s) => s.id === stageIdParam)
     : stages?.[0];
 
-  // Jika belum ada stage
-  if (!stages || stages.length === 0) {
+  // Jika belum ada stage atau tournament tidak ditemukan
+  if (!stages || stages.length === 0 || !tournament) {
     const { count: participantCount } = await supabase
       .from("participants")
       .select("*", { count: "exact", head: true })
@@ -50,7 +57,7 @@ export default async function BracketPage({
     );
   }
 
-  // 2. Ambil Match
+  // --- 3. Ambil Match ---
   const { data: matches } = await supabase
     .from("matches")
     .select(
@@ -60,7 +67,7 @@ export default async function BracketPage({
     .order("round_number", { ascending: true })
     .order("match_number", { ascending: true });
 
-  // 3. Ambil Peserta
+  // --- 4. Ambil Peserta ---
   const { data: participants } = await supabase
     .from("participants")
     .select("*")
@@ -155,7 +162,6 @@ export default async function BracketPage({
               />
             )}
 
-            {/* --- UPDATE: PASS ALL PARTICIPANTS HERE --- */}
             {(activeStage?.type === "SINGLE_ELIMINATION" ||
               activeStage?.type === "DOUBLE_ELIMINATION") && (
               <div className="bg-slate-900/30 border border-white/5 rounded-2xl p-6 overflow-hidden relative min-h-96">
@@ -164,9 +170,11 @@ export default async function BracketPage({
                     Geser Horizontal 👉
                   </span>
                 </div>
+                {/* --- UPDATE: PASS TOURNAMENT PROP HERE --- */}
                 <BracketVisualizer 
                   matches={matches} 
                   allParticipants={participants || []} 
+                  tournament={tournament as unknown as Tournament} // Pass data tournament
                 />
               </div>
             )}

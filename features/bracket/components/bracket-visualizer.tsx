@@ -3,16 +3,19 @@
 import MatchCard from "./match-card";
 import { Trophy } from "lucide-react";
 import { MatchWithParticipants } from "../types";
-import { Participant } from "@/types/database";
+import { Participant, Tournament } from "@/types/database"; // 1. Tambah Import Tournament
+import ChampionsView from "./champions-view"; // 2. Import ChampionsView
 
 // --- UPDATE PROPS INTERFACE ---
 export default function BracketVisualizer({
   matches,
-  allParticipants, // Terima data peserta
+  allParticipants,
+  tournament, // 3. Tambahkan tournament ke props (dibutuhkan ChampionsView)
   isReadOnly = false,
 }: {
   matches: MatchWithParticipants[];
-  allParticipants: Participant[]; // Type definition
+  allParticipants: Participant[];
+  tournament: Tournament; // 3. Definisi tipe tournament
   isReadOnly?: boolean;
 }) {
   // --- 1. Separasi Data Bracket ---
@@ -76,87 +79,58 @@ export default function BracketVisualizer({
   };
 
   return (
-    <div className="w-full overflow-x-auto pb-12 pt-8 px-4 custom-scrollbar bg-slate-950 min-h-150 flex items-center">
-      {/* WRAPPER UTAMA */}
-      <div className="flex gap-20">
-        
-        {/* --- KOLOM KIRI: UPPER & LOWER BRACKET --- */}
-        <div className="flex flex-col gap-24">
+    // WRAPPER UTAMA (Flex Column agar Podium di atas Bracket)
+    <div className="flex flex-col w-full space-y-8">
+      
+      {/* 4. PASANG CHAMPIONS VIEW DI SINI */}
+      <ChampionsView 
+        tournament={tournament}
+        matches={matches}
+        participants={allParticipants}
+      />
+
+      {/* CONTAINER BRACKET (Scrollable Horizontal) */}
+      <div className="w-full overflow-x-auto pb-12 pt-8 px-4 custom-scrollbar bg-slate-950 min-h-150 flex items-center justify-start lg:justify-center">
+        <div className="flex gap-20">
           
-          {/* A. UPPER BRACKET SECTION */}
-          <div className="relative">
-             <div className="absolute -top-10 left-0 bg-slate-900/50 text-indigo-400 px-3 py-1 rounded border border-indigo-500/20 text-[10px] font-bold tracking-widest uppercase">
-                Upper Bracket
-             </div>
-             
-             <div className="flex gap-16">
-               {ubRounds.map((roundMatches, roundIdx) => {
-                  const isLastUbRound = roundIdx === ubRounds.length - 1;
-                  const roundLabel = getRoundLabel(roundIdx, ubRounds.length, "UB");
-                  
-                  const gapStyle = { gap: `${Math.pow(2, roundIdx) * 1.5}rem` };
-
-                  return (
-                    <div
-                      key={`ub-${roundIdx}`}
-                      className="flex flex-col justify-center"
-                      style={gapStyle}
-                    >
-                      <div className="text-center mb-3">
-                        <span className="text-[10px] text-slate-500 font-mono font-bold uppercase tracking-widest bg-slate-900/80 px-2 py-1 rounded">
-                          {roundLabel}
-                        </span>
-                      </div>
-                      
-                      {roundMatches
-                        .sort((a, b) => a.match_number - b.match_number)
-                        .map((m, idx) => (
-                          <MatchCard
-                            key={m.id}
-                            match={m}
-                            allParticipants={allParticipants} // --- UPDATE PASSING PROP
-                            isReadOnly={isReadOnly}
-                            connectorType={isLastUbRound ? "ub-final" : getConnectorType(idx)}
-                          />
-                        ))}
-                    </div>
-                  );
-               })}
-             </div>
-          </div>
-
-          {/* B. LOWER BRACKET SECTION */}
-          {hasLowerBracket && (
-            <div className="relative pt-4 border-t border-slate-800/30">
-               <div className="absolute -top-3 left-0 bg-slate-900/50 text-rose-400 px-3 py-1 rounded border border-rose-500/20 text-[10px] font-bold tracking-widest uppercase">
-                  Lower Bracket
+          {/* --- KOLOM KIRI: UPPER & LOWER BRACKET --- */}
+          <div className="flex flex-col gap-24">
+            
+            {/* A. UPPER BRACKET SECTION */}
+            <div className="relative">
+               <div className="absolute -top-10 left-0 bg-slate-900/50 text-indigo-400 px-3 py-1 rounded border border-indigo-500/20 text-[10px] font-bold tracking-widest uppercase">
+                  Upper Bracket
                </div>
-
-               <div className="flex gap-16 mt-10">
-                 {lbRounds.map((roundMatches, roundIdx) => {
-                    const isLastLbRound = roundIdx === lbRounds.length - 1;
-                    const roundLabel = getRoundLabel(roundIdx, lbRounds.length, "LB");
+               
+               <div className="flex gap-16">
+                 {ubRounds.map((roundMatches, roundIdx) => {
+                    const isLastUbRound = roundIdx === ubRounds.length - 1;
+                    const roundLabel = getRoundLabel(roundIdx, ubRounds.length, "UB");
+                    
+                    // Jarak antar ronde semakin melebar
+                    const gapStyle = { gap: `${Math.pow(2, roundIdx) * 1.5}rem` };
 
                     return (
                       <div
-                        key={`lb-${roundIdx}`}
-                        className="flex flex-col justify-center gap-6"
+                        key={`ub-${roundIdx}`}
+                        className="flex flex-col justify-center"
+                        style={gapStyle}
                       >
-                         <div className="text-center mb-3">
+                        <div className="text-center mb-3">
                           <span className="text-[10px] text-slate-500 font-mono font-bold uppercase tracking-widest bg-slate-900/80 px-2 py-1 rounded">
                             {roundLabel}
                           </span>
                         </div>
-
+                        
                         {roundMatches
                           .sort((a, b) => a.match_number - b.match_number)
-                          .map((m) => (
+                          .map((m, idx) => (
                             <MatchCard
                               key={m.id}
                               match={m}
-                              allParticipants={allParticipants} // --- UPDATE PASSING PROP
+                              allParticipants={allParticipants}
                               isReadOnly={isReadOnly}
-                              connectorType={isLastLbRound ? "lb-final" : "straight"}
+                              connectorType={isLastUbRound ? "ub-final" : getConnectorType(idx)}
                             />
                           ))}
                       </div>
@@ -164,56 +138,97 @@ export default function BracketVisualizer({
                  })}
                </div>
             </div>
-          )}
-        </div>
 
-        {/* --- KOLOM KANAN: GRAND FINAL --- */}
-        {grandFinal.length > 0 && (
-           <div className="flex flex-col justify-center relative pl-8">
-              
-              <div className="absolute left-0 top-1/2 -translate-y-1/2 w-8 h-0.5 bg-slate-600"></div>
-
-              <div className="flex flex-col items-center gap-6">
-                 <div className="text-center">
-                    <span className="text-[10px] text-yellow-500 font-black tracking-[0.2em] bg-yellow-500/10 px-4 py-1.5 rounded-full border border-yellow-500/20 shadow-[0_0_15px_rgba(234,179,8,0.1)]">
-                       GRAND FINAL
-                    </span>
+            {/* B. LOWER BRACKET SECTION */}
+            {hasLowerBracket && (
+              <div className="relative pt-4 border-t border-slate-800/30">
+                 <div className="absolute -top-3 left-0 bg-slate-900/50 text-rose-400 px-3 py-1 rounded border border-rose-500/20 text-[10px] font-bold tracking-widest uppercase">
+                    Lower Bracket
                  </div>
-                 
-                 {grandFinal.map(m => (
-                    <MatchCard 
-                        key={m.id} 
-                        match={m} 
-                        allParticipants={allParticipants} // --- UPDATE PASSING PROP
-                        isReadOnly={isReadOnly} 
-                        connectorType={null} 
-                    />
-                 ))}
 
-                 {/* CHAMPION DISPLAY */}
-                 {finalMatch?.status === "COMPLETED" && championName && (
-                    <div className="mt-8 animate-in fade-in zoom-in duration-500">
-                      <div className="relative p-6 rounded-2xl bg-linear-to-b from-slate-900 to-slate-950 border border-yellow-500/30 text-center shadow-[0_0_40px_rgba(234,179,8,0.15)]">
-                        <div className="absolute -top-6 left-1/2 -translate-x-1/2 bg-slate-950 p-3 rounded-full border border-yellow-500/30 shadow-lg">
-                          <Trophy
-                            size={32}
-                            className="text-yellow-400 drop-shadow-[0_0_10px_rgba(234,179,8,0.5)]"
-                          />
+                 <div className="flex gap-16 mt-10">
+                   {lbRounds.map((roundMatches, roundIdx) => {
+                      const isLastLbRound = roundIdx === lbRounds.length - 1;
+                      const roundLabel = getRoundLabel(roundIdx, lbRounds.length, "LB");
+
+                      return (
+                        <div
+                          key={`lb-${roundIdx}`}
+                          className="flex flex-col justify-center gap-6"
+                        >
+                           <div className="text-center mb-3">
+                            <span className="text-[10px] text-slate-500 font-mono font-bold uppercase tracking-widest bg-slate-900/80 px-2 py-1 rounded">
+                              {roundLabel}
+                            </span>
+                          </div>
+
+                          {roundMatches
+                            .sort((a, b) => a.match_number - b.match_number)
+                            .map((m) => (
+                              <MatchCard
+                                key={m.id}
+                                match={m}
+                                allParticipants={allParticipants}
+                                isReadOnly={isReadOnly}
+                                connectorType={isLastLbRound ? "lb-final" : "straight"}
+                              />
+                            ))}
                         </div>
-                        <div className="mt-4">
-                          <span className="text-[10px] font-bold text-yellow-600 tracking-[0.3em] uppercase block mb-1">
-                            CHAMPION
-                          </span>
-                          <h1 className="text-2xl font-black whitespace-nowrap text-white">
-                            {championName}
-                          </h1>
+                      );
+                   })}
+                 </div>
+              </div>
+            )}
+          </div>
+
+          {/* --- KOLOM KANAN: GRAND FINAL --- */}
+          {grandFinal.length > 0 && (
+             <div className="flex flex-col justify-center relative pl-8">
+                
+                <div className="absolute left-0 top-1/2 -translate-y-1/2 w-8 h-0.5 bg-slate-600"></div>
+
+                <div className="flex flex-col items-center gap-6">
+                   <div className="text-center">
+                      <span className="text-[10px] text-yellow-500 font-black tracking-[0.2em] bg-yellow-500/10 px-4 py-1.5 rounded-full border border-yellow-500/20 shadow-[0_0_15px_rgba(234,179,8,0.1)]">
+                         GRAND FINAL
+                      </span>
+                   </div>
+                   
+                   {grandFinal.map(m => (
+                      <MatchCard 
+                          key={m.id} 
+                          match={m} 
+                          allParticipants={allParticipants}
+                          isReadOnly={isReadOnly} 
+                          connectorType={null} 
+                      />
+                   ))}
+
+                   {/* CHAMPION DISPLAY (Versi Kecil di Ujung Bracket) */}
+                   {finalMatch?.status === "COMPLETED" && championName && (
+                      <div className="mt-8 animate-in fade-in zoom-in duration-500">
+                        <div className="relative p-6 rounded-2xl bg-linear-to-b from-slate-900 to-slate-950 border border-yellow-500/30 text-center shadow-[0_0_40px_rgba(234,179,8,0.15)]">
+                          <div className="absolute -top-6 left-1/2 -translate-x-1/2 bg-slate-950 p-3 rounded-full border border-yellow-500/30 shadow-lg">
+                            <Trophy
+                              size={32}
+                              className="text-yellow-400 drop-shadow-[0_0_10px_rgba(234,179,8,0.5)]"
+                            />
+                          </div>
+                          <div className="mt-4">
+                            <span className="text-[10px] font-bold text-yellow-600 tracking-[0.3em] uppercase block mb-1">
+                              CHAMPION
+                            </span>
+                            <h1 className="text-2xl font-black whitespace-nowrap text-white">
+                              {championName}
+                            </h1>
+                          </div>
                         </div>
                       </div>
-                    </div>
-                 )}
-              </div>
-           </div>
-        )}
+                   )}
+                </div>
+             </div>
+          )}
+        </div>
       </div>
     </div>
   );
