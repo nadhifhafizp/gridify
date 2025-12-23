@@ -2,11 +2,12 @@
 
 import { Dialog, Transition } from "@headlessui/react";
 import { Fragment, useState } from "react";
+import { useRouter } from "next/navigation"; // <--- TAMBAHAN PENTING 1
 import { MatchWithParticipants } from "../types";
 import { Participant } from "@/types/database";
-import { updateMatchDetails } from "../actions/match-actions"; // Import Server Action
+import { updateMatchDetails } from "../actions/match-actions"; 
 import { Loader2 } from "lucide-react";
-import { toast } from "sonner"; // Opsional: jika pakai sonner
+import { toast } from "sonner"; 
 
 interface ScoreModalProps {
   isOpen: boolean;
@@ -21,6 +22,9 @@ export default function ScoreModal({
   match, 
   allParticipants 
 }: ScoreModalProps) {
+  
+  // Inisialisasi Router
+  const router = useRouter(); 
   
   const [scoreA, setScoreA] = useState(match.scores?.a || 0);
   const [scoreB, setScoreB] = useState(match.scores?.b || 0);
@@ -48,11 +52,15 @@ export default function ScoreModal({
         match.id,
         { a: scoreA, b: scoreB },
         participantsToUpdate,
-        match.tournament_id // Kirim ID turnamen untuk revalidate path
+        match.tournament_id 
       );
 
       if (result.success) {
         toast.success("Match updated successfully");
+        
+        // <--- TAMBAHAN PENTING 2: Refresh UI agar data baru langsung muncul
+        router.refresh(); 
+        
         onClose(); 
       } else {
         toast.error("Gagal mengupdate match: " + result.error);
