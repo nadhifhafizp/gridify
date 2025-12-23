@@ -34,27 +34,54 @@ export default function ChampionsView({
     // Jika belum ada match selesai, return null (belum ada juara)
     if (completedMatches.length === 0) return null; 
 
-    // Cari Grand Final: Match yang tidak punya 'next_match_id' (ujung bracket)
-    // Atau bisa juga cari match dengan round_number tertinggi (999 dsb)
-    const finalMatch = completedMatches.find(m => !m.next_match_id);
+    // A. CARI GRAND FINAL
+    // Grand Final biasanya adalah match yang tidak punya 'next_match_id' (ujung bracket)
+    // Jika ada Bronze Match (Single Elim), dia juga tidak punya next_match_id.
+    // Maka kita urutkan berdasarkan match_number (Grand Final biasanya nomor terakhir/terbesar)
+    const endMatches = completedMatches
+      .filter(m => !m.next_match_id)
+      .sort((a, b) => b.match_number - a.match_number); // Descending (Terbesar dulu)
 
-    if (finalMatch && finalMatch.winner_id) {
+    const grandFinal = endMatches[0]; // Match nomor terbesar dianggap Grand Final
+
+    if (grandFinal && grandFinal.winner_id) {
       // JUARA 1: Pemenang Final
-      champions.first = participants.find(p => p.id === finalMatch.winner_id);
+      champions.first = participants.find(p => p.id === grandFinal.winner_id);
       
       // JUARA 2: Yang kalah di Final
-      const loserId = finalMatch.winner_id === finalMatch.participant_a_id 
-        ? finalMatch.participant_b_id 
-        : finalMatch.participant_a_id;
+      const loserId = grandFinal.winner_id === grandFinal.participant_a_id 
+        ? grandFinal.participant_b_id 
+        : grandFinal.participant_a_id;
       champions.second = participants.find(p => p.id === loserId);
 
-      // JUARA 3: Cek setting 'hasThirdPlace'
-      if (settings?.hasThirdPlace) {
-        // Logic mencari juara 3:
-        // Biasanya adalah pemenang dari match tipe "Bronze Match".
-        // Karena struktur database match anda dinamis, kita perlu logic spesifik.
-        // OPSI: Cari match yang winner-nya BUKAN peserta final, tapi statusnya COMPLETED di round akhir.
-        // Untuk saat ini kita fokus ke Juara 1 & 2 agar aman.
+      // JUARA 3: LOGIKA PENCARIAN
+      if (type === "SINGLE_ELIMINATION" && settings?.hasThirdPlace) {
+        // Untuk Single Elim + Bronze Match:
+        // Bronze Match adalah match "ujung" (no next match) KEDUA terbesar setelah Grand Final.
+        const bronzeMatch = endMatches.length > 1 ? endMatches[1] : null;
+        
+        if (bronzeMatch && bronzeMatch.winner_id) {
+          champions.third = participants.find(p => p.id === bronzeMatch.winner_id);
+        }
+      } 
+      else if (type === "DOUBLE_ELIMINATION") {
+        // Untuk Double Elim:
+        // Juara 3 adalah LOSER dari Lower Bracket Final.
+        // LB Final adalah match terakhir di Lower Bracket (round number negatif terbesar atau terkecil tergantung sistem).
+        // Cara termudah: Cari match yang winner-nya maju ke Grand Final (sebagai penantang dari bawah).
+        
+        // Cari match yang next_match_id-nya adalah ID Grand Final
+        const lbFinal = completedMatches.find(m => m.next_match_id === grandFinal.id);
+        
+        if (lbFinal && lbFinal.winner_id) {
+            // Yang menang LB Final maju ke Grand Final (jadi Juara 1 atau 2).
+            // Yang KALAH di LB Final adalah JUARA 3.
+            const lbLoserId = lbFinal.winner_id === lbFinal.participant_a_id
+                ? lbFinal.participant_b_id
+                : lbFinal.participant_a_id;
+            
+            champions.third = participants.find(p => p.id === lbLoserId);
+        }
       }
     }
   } 
@@ -70,7 +97,7 @@ export default function ChampionsView({
   }
 
   // --- LOGIC TAMPILAN KHUSUS ---
-  // Sembunyikan Juara 2 & 3 jika Single Elimination tanpa Bronze Match
+  // Sembunyikan Juara 2 & 3 jika Single Elimination TAPI 'hasThirdPlace' False
   const showOnlyWinner = 
     (type === "SINGLE_ELIMINATION" && !settings?.hasThirdPlace);
 
@@ -114,7 +141,7 @@ export default function ChampionsView({
         {champions.first && (
           <div className="flex flex-col items-center z-10 -mt-10 animate-in fade-in slide-in-from-bottom-8 duration-700 order-2">
             <div className="relative group">
-              {/* Efek Glow */}
+              {/* Efek Glow: Fixed blur-[40px] to blur-2xl */}
               <div className="absolute inset-0 bg-yellow-500/20 blur-2xl rounded-full opacity-50 group-hover:opacity-70 transition-opacity" />
               
               <Trophy 
@@ -124,11 +151,13 @@ export default function ChampionsView({
                 fill="currentColor" 
                 fillOpacity={0.15}
               />
+              {/* Fixed bg-gradient-to-r to bg-linear-to-r */}
               <div className="absolute -bottom-5 left-1/2 -translate-x-1/2 bg-linear-to-r from-yellow-600 to-yellow-500 text-white text-sm font-bold px-4 py-1 rounded-full border border-yellow-400 shadow-lg z-20">
                 #1
               </div>
             </div>
             <div className="mt-8 text-center">
+              {/* Fixed bg-gradient-to-r to bg-linear-to-r */}
               <p className="text-3xl font-black max-w-60 truncate bg-linear-to-r from-yellow-100 via-yellow-300 to-yellow-500 bg-clip-text text-transparent drop-shadow-sm">
                 {champions.first.name}
               </p>
