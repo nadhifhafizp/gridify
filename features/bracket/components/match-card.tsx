@@ -1,47 +1,45 @@
 "use client";
 
 import { useState } from "react";
-import { Edit2 } from "lucide-react";
+import { Edit2, Trophy } from "lucide-react"; // <--- 1. Import Icon Trophy
 import ScoreModal from "./score-modal";
 import { MatchWithParticipants } from "../types";
 import { Participant } from "@/types/database";
 
-// --- Connector Component (Updated for Esports Layout) ---
+// --- Connector Component (Visual Garis Bracket) ---
 const BracketConnector = ({ type }: { type: "top" | "bottom" | "straight" | "ub-final" | "lb-final" | null }) => {
   if (!type) return null;
 
   return (
     <div className="absolute -right-8 top-1/2 w-8 h-full pointer-events-none z-0">
-      {/* Garis Horizontal Dasar (Keluar dari Match) */}
+      {/* Garis Horizontal Dasar */}
       <div className={`absolute left-0 top-0 w-full h-0.5 bg-slate-600 ${type === 'bottom' || type === 'lb-final' ? '-translate-y-0.5' : ''}`}></div>
 
-      {/* Tipe: Top (Turun ke bawah untuk merge pair) */}
+      {/* Tipe: Top */}
       {type === "top" && (
         <div className="absolute right-0 top-0 w-0.5 h-[calc(100%+2rem)] bg-slate-600 rounded-br-lg translate-y-0"></div>
       )}
 
-      {/* Tipe: Bottom (Naik ke atas untuk merge pair) */}
+      {/* Tipe: Bottom */}
       {type === "bottom" && (
         <div className="absolute right-0 bottom-1/2 w-0.5 h-[calc(100%+2rem)] bg-slate-600 rounded-tr-lg -translate-y-0.5"></div>
       )}
 
-      {/* Tipe: Straight (Lurus saja - biasanya untuk LB round biasa) */}
+      {/* Tipe: Straight */}
       {type === "straight" && (
         <div className="absolute right-0 top-0 w-4 h-0.5 bg-slate-600"></div>
       )}
 
-      {/* KHUSUS: UB Final (Turun Jauh ke Grand Final) */}
+      {/* KHUSUS: UB Final */}
       {type === "ub-final" && (
         <div className="absolute right-0 top-0 w-0.5 h-30 bg-slate-600 rounded-br-lg translate-y-0 border-b-0">
-           {/* Perpanjangan horizontal ke kanan menuju GF */}
            <div className="absolute bottom-0 -right-4 w-4 h-0.5 bg-slate-600"></div>
         </div>
       )}
 
-      {/* KHUSUS: LB Final (Naik Jauh ke Grand Final) */}
+      {/* KHUSUS: LB Final */}
       {type === "lb-final" && (
         <div className="absolute right-0 bottom-1/2 w-0.5 h-30 bg-slate-600 rounded-tr-lg -translate-y-0.5 border-t-0">
-           {/* Perpanjangan horizontal ke kanan menuju GF */}
            <div className="absolute top-0 -right-4 w-4 h-0.5 bg-slate-600"></div>
         </div>
       )}
@@ -51,12 +49,12 @@ const BracketConnector = ({ type }: { type: "top" | "bottom" | "straight" | "ub-
 
 export default function MatchCard({
   match,
-  allParticipants, // --- UPDATE PROPS
+  allParticipants,
   isReadOnly = false,
   connectorType = null,
 }: {
   match: MatchWithParticipants;
-  allParticipants: Participant[]; // --- UPDATE TYPE
+  allParticipants: Participant[];
   isReadOnly?: boolean;
   connectorType?: "top" | "bottom" | "straight" | "ub-final" | "lb-final" | null;
 }) {
@@ -67,7 +65,7 @@ export default function MatchCard({
   const score = match.scores || { a: 0, b: 0 };
   const winnerId = match.winner_id;
 
-  // Logic: Bisa edit kalau tidak ReadOnly (Bahkan jika belum ready, admin mungkin mau set tim manual)
+  // Logic: Bisa edit kalau tidak ReadOnly
   const canEdit = !isReadOnly;
 
   return (
@@ -132,6 +130,11 @@ export default function MatchCard({
               >
                 {p1?.name || "TBD"}
               </span>
+              
+              {/* --- 2. LOGIC TROPHY (Hanya muncul jika menang) --- */}
+              {winnerId && winnerId === p1?.id && (
+                <Trophy size={14} className="text-yellow-400 ml-1 shrink-0" />
+              )}
             </div>
             <span className={`text-sm font-bold font-mono ${winnerId === p1?.id ? 'text-indigo-300' : 'text-slate-600'}`}>
               {score.a ?? 0}
@@ -161,6 +164,11 @@ export default function MatchCard({
               >
                 {p2?.name || "TBD"}
               </span>
+
+              {/* --- 2. LOGIC TROPHY (Hanya muncul jika menang) --- */}
+              {winnerId && winnerId === p2?.id && (
+                <Trophy size={14} className="text-yellow-400 ml-1 shrink-0" />
+              )}
             </div>
             <span className={`text-sm font-bold font-mono ${winnerId === p2?.id ? 'text-indigo-300' : 'text-slate-600'}`}>
               {score.b ?? 0}
@@ -172,7 +180,7 @@ export default function MatchCard({
       {canEdit && (
         <ScoreModal
           match={match}
-          allParticipants={allParticipants} // --- UPDATE PASSING PROP
+          allParticipants={allParticipants} // <-- Mengirim data peserta lengkap
           isOpen={isModalOpen}
           onClose={() => setIsModalOpen(false)}
         />
