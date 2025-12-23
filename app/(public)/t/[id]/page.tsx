@@ -17,7 +17,7 @@ import StandingsTable from "@/features/bracket/components/standings-table";
 import BattleRoyaleView from "@/features/bracket/components/br-view";
 import { Tournament } from "@/types/database";
 
-// --- IMPORT KOMPONEN REALTIME YANG SUDAH ADA ---
+// --- IMPORT KOMPONEN REALTIME ---
 import RealtimeListener from "@/components/providers/tournament/realtime-listener"; 
 
 export const dynamic = "force-dynamic";
@@ -33,7 +33,7 @@ export default async function PublicTournamentPage({
   const { stage: stageIdParam } = await searchParams;
   const supabase = await createClient();
 
-  // 1. Ambil Data Tournament
+  // 1. Ambil Data Tournament (termasuk owner untuk keperluan internal jika butuh)
   const { data: tournament } = await supabase
     .from("tournaments")
     .select("*, owner:owner_id(email)") 
@@ -49,6 +49,7 @@ export default async function PublicTournamentPage({
     .eq("tournament_id", id)
     .order("sequence_order", { ascending: true });
 
+  // Tentukan stage aktif (dari URL atau default ke stage pertama)
   const activeStage = stageIdParam
     ? stages?.find((s) => s.id === stageIdParam)
     : stages?.[0];
@@ -59,7 +60,7 @@ export default async function PublicTournamentPage({
     .select("*")
     .eq("tournament_id", id);
 
-  // 4. Ambil Matches
+  // 4. Ambil Matches untuk stage aktif
   const { data: matches } = activeStage
     ? await supabase
         .from("matches")
@@ -78,7 +79,7 @@ export default async function PublicTournamentPage({
     <div className="min-h-screen bg-slate-950 text-slate-200 font-sans selection:bg-indigo-500/30">
       
       {/* --- INTEGRASI REALTIME --- */}
-      {/* Komponen ini akan otomatis refresh halaman saat ada update data & menampilkan badge "LIVE" */}
+      {/* Komponen ini akan mentrigger router.refresh() saat ada update di tabel matches/participants */}
       <RealtimeListener tournamentId={id} />
 
       {/* --- HERO SECTION --- */}
@@ -146,7 +147,7 @@ export default async function PublicTournamentPage({
         )}
 
         {/* BRACKET VIEW AREA */}
-        <div className="max-w-400 mx-auto">
+        <div className="max-w-[1400px] mx-auto">
           {!activeStage ? (
             <div className="text-center py-20 text-slate-500">
               <p>Belum ada stage yang dibuat.</p>
@@ -201,7 +202,8 @@ export default async function PublicTournamentPage({
                     </span>
                   </div>
 
-                  <div className="p-6 md:p-10">
+                  <div className="p-6 md:p-10 overflow-x-auto">
+                    {/* PERBAIKAN: Menambahkan props 'tournament' yang dibutuhkan untuk ChampionsView */}
                     <BracketVisualizer
                       matches={matches || []}
                       allParticipants={participants || []}
